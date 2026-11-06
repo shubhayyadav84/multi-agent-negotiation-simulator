@@ -465,6 +465,14 @@ const NegotiationArena = () => {
     }
   };
 
+  /**
+   * Directly triggers human decision submissions (Acceptance / Rejection quick options)
+   */
+  const handleHumanSubmit = (text) => {
+    if (!text || turnRunning || !simulation?.id || isTerminated) return;
+    handleSendPracticeMessage(text);
+  };
+
 
   
 
@@ -1531,6 +1539,7 @@ const NegotiationArena = () => {
                     <button
                       type="button"
                       className="arena-quick-chip"
+                      disabled={!isHumanTurn || turnRunning || isTerminated}
                       onClick={() => handleHumanSubmit("I accept the deal.")}
                       title="Directly accept the current offer and conclude negotiation"
                     >
@@ -1539,6 +1548,7 @@ const NegotiationArena = () => {
                     <button
                       type="button"
                       className="arena-quick-chip chip-reject"
+                      disabled={!isHumanTurn || turnRunning || isTerminated}
                       onClick={() => handleHumanSubmit("I cannot accept this offer. Let's end the negotiation.")}
                       title="Directly reject the offer and terminate negotiation"
                     >

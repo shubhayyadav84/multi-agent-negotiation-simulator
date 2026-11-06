@@ -34,7 +34,8 @@ Core Instructions & Behavioral Rules:
  * Call Google Gemini REST API across candidate models
  */
 async function callGeminiRest(messages, strategyContext = null) {
-  if (!GEMINI_API_KEY) {
+  const apiKey = process.env.GEMINI_API_KEY || GEMINI_API_KEY;
+  if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not configured on the backend.');
   }
 
@@ -65,7 +66,7 @@ Crucial: Directly answer the user's specific prompt in relation to this strategy
 
   for (const model of modelsToTry) {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const payload = {
         contents,
         systemInstruction: { parts: [{ text: systemText }] },
@@ -113,7 +114,8 @@ Crucial: Directly answer the user's specific prompt in relation to this strategy
  * Call OpenAI API as backup if Gemini is unavailable
  */
 async function callOpenAiBackup(messages, strategyContext = null) {
-  if (!OPENAI_API_KEY) {
+  const apiKey = process.env.OPENAI_API_KEY || OPENAI_API_KEY;
+  if (!apiKey) {
     throw new Error('OPENAI_API_KEY is not configured on the backend.');
   }
 
@@ -145,7 +147,7 @@ Crucial: Directly answer the user's specific prompt in relation to this strategy
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`
+      'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,

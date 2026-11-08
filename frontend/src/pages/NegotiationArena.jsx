@@ -33,8 +33,6 @@ import {
   UserCheck,
   RotateCw,
   BookOpen,
-  Volume2,
-  VolumeX,
   Scale,
 } from 'lucide-react';
 import { useScenario } from '../context/ScenarioContext';
@@ -1365,32 +1363,6 @@ const NegotiationArena = () => {
                                     <div className={`arena-speech-bubble ${isHumanMsg ? 'human-bubble' : ''} ${isLeft ? 'buyer-bubble' : 'seller-bubble'}`}>
                                       <p className="arena-bubble-text">{msg.message}</p>
                                     </div>
-                                    {isPracticeMode && !isHumanMsg && msg.message?.trim() && (
-                                      <button
-                                      type="button"
-                                      className={`arena-message-tts-btn ${
-                                        speakingMessageId === (msg.id || msg.message)
-                                          ? 'is-speaking'
-                                          : ''
-                                      }`}
-                                      onClick={() =>
-                                        speakMessage(
-                                          msg.id || msg.message,
-                                          msg.message
-                                        )
-                                      }
-                                      title={
-                                        speakingMessageId === (msg.id || msg.message)
-                                          ? 'Stop speaking'
-                                          : 'Listen to AI message'
-                                      }
-                                      aria-label="Listen to AI message"
-                                    >
-                                      {speakingMessageId === (msg.id || msg.message)
-                                        ? <VolumeX size={16} />
-                                        : <Volume2 size={16} />}
-                                    </button>
-                                  )}
 
                                     {/* Attached Offer Badge for Left/AI messages (Placed on right of text) */}
                                     {isLeft && attachedOffer && (

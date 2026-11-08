@@ -381,6 +381,9 @@ class OrchestratorAgent {
         currentOffer: openingAgent.current_offer || openingAgent.target_value || initialBuyerOffer,
         history: [],
       });
+      if (openingMove.action === 'ACCEPT') {
+        openingMove.action = 'OFFER';
+      }
 
       // 4. Record opening message and offer
       await db.addMessage({
@@ -703,20 +706,21 @@ const fixedOffer =
       } else {
         currentGap = Math.abs(bOffer - sOffer);
       }
+    } else if (sim.scenario_id === 'project-budget') {
+      const totalDemanded = agents.reduce((sum, a) => sum + Number(a.current_offer || 0), 0);
+      currentGap = totalDemanded <= 1000000 ? 0 : (totalDemanded - 1000000);
     } else {
       const agent0Offer = Number(agents[0]?.current_offer || 0);
       const agent1Offer = Number(agents[1]?.current_offer || 0);
       currentGap = Math.abs(agent0Offer - agent1Offer);
     }
 
-    // Require both primary participants to have actively tabled offers before evaluating gap convergence
-    const agent0HasOffered = (updatedSim.messages || []).some(
-      (m) => (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') && m.sender_role === agents[0]?.role && m.offer_value
+    // Require primary participants to have actively tabled offers before evaluating gap convergence
+    const activeOfferMessages = (updatedSim.messages || []).filter(
+      (m) => (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') && m.offer_value
     );
-    const agent1HasOffered = (updatedSim.messages || []).some(
-      (m) => (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') && m.sender_role === agents[1]?.role && m.offer_value
-    );
-    const bothHaveOffered = agent0HasOffered && agent1HasOffered;
+    const uniqueOfferSenders = new Set(activeOfferMessages.map((m) => m.sender_role || m.sender_name));
+    const bothHaveOffered = uniqueOfferSenders.size >= Math.min(2, agents.length);
 // Check whether the negotiation is reaching a deadlock
 const deadlock = this.detectDeadlock(updatedSim);
 

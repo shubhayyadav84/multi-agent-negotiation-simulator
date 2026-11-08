@@ -113,12 +113,12 @@ function generateDeterministicAgentMove({
   const currency = scenario?.currency || '₹';
 
   const concessionRate = calculateConcessionRate(personality, roundNumber, maxRounds, cpPersonality);
-  const counterpartOffer = counterpart?.current_offer ? Number(counterpart.current_offer) : null;
+  const hasPriorOffers = Array.isArray(history) && history.some((m) => m.offer_value || m.sender_type === 'AGENT' || m.sender_type === 'HUMAN');
+  const counterpartOffer = hasPriorOffers && counterpart?.current_offer ? Number(counterpart.current_offer) : null;
 
   let proposedOffer = 0;
   let message = '';
   let stance = 'Holding firm';
-  const hasPriorOffers = Array.isArray(history) && history.some((m) => m.offer_value || m.sender_type === 'AGENT' || m.sender_type === 'HUMAN');
   let action = hasPriorOffers || roundNumber > 1 ? 'COUNTER_OFFER' : 'OFFER';
   let agreementReached = false;
   let terms = {};
@@ -167,8 +167,12 @@ function generateDeterministicAgentMove({
       const salLimit = 160000;
       proposedOffer = Math.round(salTarget - concessionRate * (salTarget - salLimit));
 
-      if (counterpartOffer && counterpartOffer >= salLimit) {
-        if (Math.abs(proposedOffer - counterpartOffer) <= 500 || roundNumber >= 8) {
+      if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
+        if (counterpartOffer >= proposedOffer) {
+          action = 'ACCEPT';
+          agreementReached = true;
+          proposedOffer = counterpartOffer;
+        } else if (counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 500 || roundNumber >= 8)) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -181,19 +185,22 @@ function generateDeterministicAgentMove({
           `Thank you for working through these terms. I confirm acceptance of ${currency}${proposedOffer.toLocaleString()} base salary.`
         ]);
         stance = 'Agreement reached';
-      } else if (roundNumber === 1) {
+      } else if (!hasPriorOffers || roundNumber === 1) {
+        proposedOffer = salTarget;
         message = pickRandom([
           `Based on senior AI engineering market benchmarks, I propose a base salary of ${currency}${proposedOffer.toLocaleString()} with remote flexibility.`,
           `My initial proposal is ${currency}${proposedOffer.toLocaleString()} base compensation reflecting senior machine learning engineering rates.`
         ]);
         stance = 'Seeking target compensation';
       } else if (personality.includes('aggressive')) {
+        if (counterpartOffer) proposedOffer = Math.max(proposedOffer, counterpartOffer);
         message = pickRandom([
           `My technical background and machine learning impact warrant a competitive package. I propose ${currency}${proposedOffer.toLocaleString()} base.`,
           `Given competing offers and domain expertise, ${currency}${proposedOffer.toLocaleString()} base is my required compensation baseline.`
         ]);
         stance = 'Holding for market value';
       } else {
+        if (counterpartOffer) proposedOffer = Math.max(proposedOffer, counterpartOffer);
         message = pickRandom([
           `I can adjust my salary expectation to ${currency}${proposedOffer.toLocaleString()} base given the equity structure.`,
           `To help us bridge the gap, I propose a compromise base salary of ${currency}${proposedOffer.toLocaleString()}.`
@@ -206,8 +213,12 @@ function generateDeterministicAgentMove({
       const salLimit = 168000;
       proposedOffer = Math.round(salTarget + concessionRate * (salLimit - salTarget));
 
-      if (counterpartOffer && counterpartOffer <= salLimit) {
-        if (Math.abs(counterpartOffer - proposedOffer) <= 500 || roundNumber >= 8) {
+      if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
+        if (counterpartOffer <= proposedOffer) {
+          action = 'ACCEPT';
+          agreementReached = true;
+          proposedOffer = counterpartOffer;
+        } else if (counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 500 || roundNumber >= 8)) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -220,20 +231,22 @@ function generateDeterministicAgentMove({
           `We confirm an agreed base compensation of ${currency}${proposedOffer.toLocaleString()}. Thrilled to have you join us!`
         ]);
         stance = 'Agreement reached';
-      } else if (!counterpartOffer || roundNumber === 1) {
-        if (!hasPriorOffers) proposedOffer = salTarget;
+      } else if (!hasPriorOffers || roundNumber === 1) {
+        proposedOffer = salTarget;
         message = pickRandom([
           `We are excited about your candidacy and pleased to extend an initial opening offer of ${currency}${proposedOffer.toLocaleString()} base salary with full benefits.`,
           `We value your technical background and are pleased to table an opening compensation offer of ${currency}${proposedOffer.toLocaleString()} base salary.`
         ]);
         stance = 'Opening Proposal';
       } else if (personality.includes('aggressive')) {
+        if (counterpartOffer) proposedOffer = Math.min(proposedOffer, counterpartOffer);
         message = pickRandom([
           `Our salary band for this grade has strict budget caps. We can adjust to ${currency}${proposedOffer.toLocaleString()} base.`,
           `We must maintain consistency across the engineering division. Our counter is ${currency}${proposedOffer.toLocaleString()} base.`
         ]);
         stance = 'Budget boundary enforcement';
       } else {
+        if (counterpartOffer) proposedOffer = Math.min(proposedOffer, counterpartOffer);
         message = pickRandom([
           `We have secured approval to enhance our package to ${currency}${proposedOffer.toLocaleString()} base with annual refreshers.`,
           `To demonstrate our strong interest, we increase our offer to ${currency}${proposedOffer.toLocaleString()} base salary.`
@@ -256,8 +269,15 @@ function generateDeterministicAgentMove({
       const priceLimit = 100000;
       proposedOffer = Math.round(priceTarget + concessionRate * (priceLimit - priceTarget));
 
-      if (counterpartOffer && counterpartOffer <= priceLimit) {
-        if (Math.abs(counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive'))) {
+      if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
+        // Condition 1: Seller asks less than or equal to what buyer was offering (e.g. seller asks 70k when buyer offer is 95k)
+        if (counterpartOffer <= proposedOffer) {
+          action = 'ACCEPT';
+          agreementReached = true;
+          proposedOffer = counterpartOffer;
+        }
+        // Condition 2: Seller asks within buyer ceiling with close gap or in late rounds
+        else if (counterpartOffer <= priceLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -271,13 +291,15 @@ function generateDeterministicAgentMove({
           `Deal confirmed at ${currency}${proposedOffer.toLocaleString()}. We look forward to a successful implementation.`
         ]);
         stance = 'Agreement reached';
-      } else if (roundNumber === 1) {
+      } else if (!hasPriorOffers || roundNumber === 1) {
+        proposedOffer = priceTarget;
         message = pickRandom([
           `We propose an opening contract value of ${currency}${proposedOffer.toLocaleString()} with Net-60 payment and four-week delivery.`,
           `Our initial procurement proposal is ${currency}${proposedOffer.toLocaleString()} under standard Net-60 payment terms.`
         ]);
         stance = 'Seeking agreement';
       } else if (personality.includes('aggressive')) {
+        if (counterpartOffer) proposedOffer = Math.min(proposedOffer, counterpartOffer);
         message = pickRandom([
           `Our enterprise procurement budget has firm constraints. We can offer ${currency}${proposedOffer.toLocaleString()} under standard Net-60 terms.`,
           `Executive leadership has set strict expenditure ceilings. Our revised offer is ${currency}${proposedOffer.toLocaleString()} on Net-60 terms.`,
@@ -285,6 +307,7 @@ function generateDeterministicAgentMove({
         ]);
         stance = 'Defending budget limits';
       } else {
+        if (counterpartOffer) proposedOffer = Math.min(proposedOffer, counterpartOffer);
         message = pickRandom([
           `We can advance our offer to ${currency}${proposedOffer.toLocaleString()} to help bridge the commercial difference.`,
           `In the interest of mutual progress, we increase our proposal to ${currency}${proposedOffer.toLocaleString()} under Net-60 terms.`,
@@ -298,8 +321,15 @@ function generateDeterministicAgentMove({
       const priceLimit = 90000;
       proposedOffer = Math.round(priceTarget - concessionRate * (priceTarget - priceLimit));
 
-      if (counterpartOffer && counterpartOffer >= priceLimit) {
-        if (Math.abs(proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive'))) {
+      if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
+        // Condition 1: Buyer offers more than or equal to what seller is asking (e.g. buyer offers 115k when seller ask is 110k)
+        if (counterpartOffer >= proposedOffer) {
+          action = 'ACCEPT';
+          agreementReached = true;
+          proposedOffer = counterpartOffer;
+        }
+        // Condition 2: Buyer offers above floor with close gap or in late rounds
+        else if (counterpartOffer >= priceLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -313,14 +343,15 @@ function generateDeterministicAgentMove({
           `Consensus reached at ${currency}${proposedOffer.toLocaleString()}. We look forward to serving your organization.`
         ]);
         stance = 'Agreement reached';
-      } else if (!counterpartOffer || roundNumber === 1) {
-        if (!hasPriorOffers) proposedOffer = priceTarget;
+      } else if (!hasPriorOffers || roundNumber === 1) {
+        proposedOffer = priceTarget;
         message = pickRandom([
           `Our initial quotation is ${currency}${proposedOffer.toLocaleString()} under standard Net-30 payment terms and 99.9% uptime SLA.`,
           `We are pleased to present our initial enterprise rate of ${currency}${proposedOffer.toLocaleString()} with standard commercial delivery terms.`
         ]);
         stance = 'Opening Proposal';
       } else if (personality.includes('aggressive')) {
+        if (counterpartOffer) proposedOffer = Math.max(proposedOffer, counterpartOffer);
         message = pickRandom([
           `Our dedicated infrastructure and enterprise SLAs justify our rate. Our revised rate is ${currency}${proposedOffer.toLocaleString()}.`,
           `Maintaining our 99.9% uptime compliance requires sustainable margins. We adjust to ${currency}${proposedOffer.toLocaleString()}.`,
@@ -328,6 +359,7 @@ function generateDeterministicAgentMove({
         ]);
         stance = 'Protecting commercial margin';
       } else {
+        if (counterpartOffer) proposedOffer = Math.max(proposedOffer, counterpartOffer);
         message = pickRandom([
           `To facilitate alignment, we can offer a volume concession down to ${currency}${proposedOffer.toLocaleString()}.`,
           `We can meet you midway by reducing our quotation to ${currency}${proposedOffer.toLocaleString()}.`,

@@ -459,9 +459,8 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
         raise ValueError(f"Unsupported negotiation scenario: {scenario_id}")
 
     concession_rate = compute_concession_rate(p_name, round_num, max_rounds, cp_name)
-    counterpart_offer = float(req.counterpart_agent.current_offer) if req.counterpart_agent.current_offer else None
-
     has_prior_moves = bool(req.conversation_history and len(req.conversation_history) > 0)
+    counterpart_offer = float(req.counterpart_agent.current_offer) if (has_prior_moves and req.counterpart_agent.current_offer) else None
     action = "COUNTER_OFFER" if (has_prior_moves or round_num > 1) else "OFFER"
     agreement = False
 
@@ -477,9 +476,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
             price_conceded = round(price_target + concession_rate * (price_limit - price_target), -2)
             proposed_price = min(price_limit, max(price_target, price_conceded))
 
-            if counterpart_offer and counterpart_offer <= price_limit:
-                gap = abs(counterpart_offer - proposed_price)
-                if gap <= 500 or (round_num >= 8 and counterpart_offer <= price_limit and "aggressive" not in p_name.lower()):
+            if counterpart_offer is not None:
+                if counterpart_offer <= proposed_price:
+                    action = "ACCEPT"
+                    agreement = True
+                    proposed_price = counterpart_offer
+                elif counterpart_offer <= price_limit and ((counterpart_offer - proposed_price) <= 500 or (round_num >= 8 and "aggressive" not in p_name.lower())):
                     action = "ACCEPT"
                     agreement = True
                     proposed_price = counterpart_offer
@@ -532,9 +534,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
             price_conceded = round(price_target - concession_rate * (price_target - price_limit), -2)
             proposed_price = max(price_limit, min(price_target, price_conceded))
 
-            if counterpart_offer and counterpart_offer >= price_limit:
-                gap = abs(proposed_price - counterpart_offer)
-                if gap <= 500 or (round_num >= 8 and "aggressive" not in p_name.lower()):
+            if counterpart_offer is not None:
+                if counterpart_offer >= proposed_price:
+                    action = "ACCEPT"
+                    agreement = True
+                    proposed_price = counterpart_offer
+                elif counterpart_offer >= price_limit and ((proposed_price - counterpart_offer) <= 500 or (round_num >= 8 and "aggressive" not in p_name.lower())):
                     action = "ACCEPT"
                     agreement = True
                     proposed_price = counterpart_offer
@@ -597,8 +602,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
             sal_conceded = round(sal_target - concession_rate * (sal_target - sal_limit), -2)
             base_salary = max(sal_limit, min(sal_target, sal_conceded))
 
-            if counterpart_offer and counterpart_offer >= sal_limit:
-                if abs(base_salary - counterpart_offer) <= 500 or round_num >= 8:
+            if counterpart_offer is not None:
+                if counterpart_offer >= base_salary:
+                    action = "ACCEPT"
+                    agreement = True
+                    base_salary = counterpart_offer
+                elif counterpart_offer >= sal_limit and ((base_salary - counterpart_offer) <= 500 or round_num >= 8):
                     action = "ACCEPT"
                     agreement = True
                     base_salary = counterpart_offer
@@ -636,8 +645,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
             sal_conceded = round(sal_target + concession_rate * (sal_limit - sal_target), -2)
             base_salary = min(sal_limit, max(sal_target, sal_conceded))
 
-            if counterpart_offer and counterpart_offer <= sal_limit:
-                if abs(counterpart_offer - base_salary) <= 500 or round_num >= 8:
+            if counterpart_offer is not None:
+                if counterpart_offer <= base_salary:
+                    action = "ACCEPT"
+                    agreement = True
+                    base_salary = counterpart_offer
+                elif counterpart_offer <= sal_limit and ((counterpart_offer - base_salary) <= 500 or round_num >= 8):
                     action = "ACCEPT"
                     agreement = True
                     base_salary = counterpart_offer

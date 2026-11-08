@@ -70,6 +70,7 @@ else:
 # ============================================================================
 
 class AgentProfile(BaseModel):
+    id: Optional[str] = None
     role: str
     name: Optional[str] = "Negotiating Agent"
     personality: Optional[str] = "Collaborative"
@@ -428,7 +429,7 @@ def compute_concession_rate(personality: str, round_num: int, max_rounds: int, c
 def generate_domain_fallback_response(req: NegotiationTurnRequest) -> NegotiationTurnResponse:
     """Generate a dynamic scenario-aware move based on agent personality, math, and rich varied dialogue."""
     scenario_id = req.scenario.id.lower()
-    role = req.agent.role.lower()
+    role_combined = f"{req.agent.role} {req.agent.name or ''} {getattr(req.agent, 'id', None) or ''}".lower()
     p_name = req.agent.personality or "Collaborative"
     cp_name = req.counterpart_agent.personality or "Collaborative"
     round_num = max(1, req.round_number)
@@ -438,15 +439,17 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
     agent_ids = {
         "vendor-pricing": (
             "buyer-procurement" if any(
-                term in role for term in ("buyer", "procurement", "client")
+                term in role_combined for term in ("buyer", "procurement", "purchasing", "purchase", "client")
             ) else "vendor-sales"
         ),
         "job-offer": (
-            "job-candidate" if "candidate" in role else "hiring-director"
+            "job-candidate" if any(
+                term in role_combined for term in ("candidate", "engineer", "applicant", "interviewee")
+            ) else "hiring-director"
         ),
         "project-budget": (
-            "vp-engineering" if "engineering" in role
-            else "cmo-marketing" if "marketing" in role
+            "vp-engineering" if any(term in role_combined for term in ("engineering", "infrastructure", "department-a", "vp-eng"))
+            else "cmo-marketing" if any(term in role_combined for term in ("marketing", "growth", "department-b", "cmo"))
             else "head-product-ai"
         ),
     }

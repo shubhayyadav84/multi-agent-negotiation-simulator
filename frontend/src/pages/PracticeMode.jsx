@@ -188,6 +188,8 @@ const PracticeMode = () => {
                   src={scenario.image}
                   alt={scenario.name}
                   className="practice-card-img"
+                  loading="lazy"
+                  decoding="async"
                   onError={(e) => {
                     if (e.target.src !== scenario.fallbackImage) {
                       e.target.src = scenario.fallbackImage;

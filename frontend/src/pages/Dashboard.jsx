@@ -51,11 +51,16 @@ const Dashboard = () => {
 
         {/* Right Column: 3D Illustration & Floating Interactive Badges */}
         <div className="hero-art-col">
-          <img
-            src="/images/dashboard/hero-card.png"
-            alt="AI Negotiation Simulation Collaboration"
-            className="hero-illustration-img"
-          />
+          <picture>
+            <source srcSet="/images/dashboard/hero-card.webp" type="image/webp" />
+            <img
+              src="/images/dashboard/hero-card.png"
+              alt="AI Negotiation Simulation Collaboration"
+              className="hero-illustration-img"
+              loading="eager"
+              decoding="async"
+            />
+          </picture>
 
           {/* Floating animated ambient pills */}
           <div className="hero-floating-bubble bubble-left">
@@ -101,11 +106,16 @@ const Dashboard = () => {
         >
           <div className="step-card-image-wrap">
             <span className="step-number-badge">1</span>
-            <img
-              src="/images/dashboard/card1.png"
-              alt="Scenario Selection"
-              className="step-card-img"
-            />
+            <picture>
+              <source srcSet="/images/dashboard/card1.webp" type="image/webp" />
+              <img
+                src="/images/dashboard/card1.png"
+                alt="Scenario Selection"
+                className="step-card-img"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
           </div>
 
           <div className="step-card-body">
@@ -144,11 +154,16 @@ const Dashboard = () => {
             >
               2
             </span>
-            <img
-              src="/images/dashboard/card2.png"
-              alt="Agent Configuration"
-              className="step-card-img"
-            />
+            <picture>
+              <source srcSet="/images/dashboard/card2.webp" type="image/webp" />
+              <img
+                src="/images/dashboard/card2.png"
+                alt="Agent Configuration"
+                className="step-card-img"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
           </div>
 
           <div className="step-card-body">
@@ -187,11 +202,16 @@ const Dashboard = () => {
             >
               3
             </span>
-            <img
-              src="/images/dashboard/card3.png"
-              alt="Live Negotiation Arena"
-              className="step-card-img"
-            />
+            <picture>
+              <source srcSet="/images/dashboard/card3.webp" type="image/webp" />
+              <img
+                src="/images/dashboard/card3.png"
+                alt="Live Negotiation Arena"
+                className="step-card-img"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
           </div>
 
           <div className="step-card-body">

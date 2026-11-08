@@ -233,7 +233,10 @@ class OrchestratorAgent {
     const simId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     const effectiveMaxRounds = maxRounds || preset.max_rounds || 10;
-    const isPractice = Array.isArray(customAgents) && customAgents.some((a) => a.personality === 'Human' || a.is_human === true);
+    const humanCount = Array.isArray(customAgents)
+      ? customAgents.filter((a) => a.personality === 'Human' || a.is_human === true).length
+      : 0;
+    const isPractice = humanCount > 0 && humanCount < (customAgents || []).length;
 
     const matchPresetAgent = (ca, presetAgents) => {
       const key = `${ca.id || ''} ${ca.role || ''} ${ca.name || ''} ${ca.title || ''}`.toLowerCase();
@@ -426,10 +429,12 @@ class OrchestratorAgent {
     // 1. Vendor Pricing: Seller first, Buyer second
     // 2. Job Offer: Recruiter first, Candidate second
     // 3. Project Budget: Human selected role NEVER starts; AI counterpart starts opening offer
+    const simAgents = sim.agents || agents || [];
+    const humanCount = simAgents.filter((a) => a.personality === 'Human' || a.is_human === true).length;
     const isPractice =
       sim.mode === 'practice' ||
       sim.is_practice === true ||
-      (Array.isArray(sim.agents) && sim.agents.some((a) => a.personality === 'Human' || a.is_human === true));
+      (humanCount > 0 && humanCount < simAgents.length);
 
     if (isPractice) {
       if (sim.scenario_id === 'vendor-pricing') {
@@ -588,10 +593,10 @@ class OrchestratorAgent {
 const deadlockTestMode = process.env.DEADLOCK_TEST_MODE === 'true';
 
 if (deadlockTestMode) {
-  const role = String(activeAgent.role).toLowerCase();
+  const descriptor = `${activeAgent.id || ''} ${activeAgent.role || ''} ${activeAgent.name || ''}`.toLowerCase();
 
 const fixedOffer =
-  role === 'buyer' || role === 'recruiter'
+  descriptor.includes('buyer') || descriptor.includes('procurement') || descriptor.includes('purchasing') || descriptor.includes('recruiter')
     ? 95000
     : 110000;
 
@@ -670,22 +675,38 @@ const fixedOffer =
     const updatedSim = await db.getSimulation(simulationId);
     const agents = updatedSim.agents || [];
 
-    // Calculate current gap between primary stakeholders (Agent 0 & Agent 1)
-    const agent0Offer = Number(agents[0]?.current_offer || 0);
-    const agent1Offer = Number(agents[1]?.current_offer || 0);
+    // Calculate current gap between primary stakeholders
     let currentGap = sim.current_gap;
-    if (agent0Offer > 0 && agent1Offer > 0) {
-      if (sim.scenario_id === 'job-offer') {
-        // Agent 0 is Recruiter (budget offer), Agent 1 is Candidate (salary ask)
-        // If recruiter offers more than or equal to candidate ask, gap is 0 (surplus/agreement)
-        currentGap = agent0Offer >= agent1Offer ? 0 : (agent1Offer - agent0Offer);
-      } else if (sim.scenario_id === 'vendor-pricing') {
-        // Agent 0 is Buyer (offers price), Agent 1 is Seller (demands price)
-        // If buyer offers more than or equal to seller ask, gap is 0 (agreement)
-        currentGap = agent0Offer >= agent1Offer ? 0 : (agent1Offer - agent0Offer);
+    if (sim.scenario_id === 'job-offer') {
+      const recruiter = agents.find((a) => {
+        const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+        return k.includes('recruiter') || k.includes('hiring') || k.includes('talent');
+      }) || agents[0];
+      const candidate = agents.find((a) => a !== recruiter) || agents[1];
+      const rOffer = Number(recruiter?.current_offer || 0);
+      const cOffer = Number(candidate?.current_offer || 0);
+      if (rOffer > 0 && cOffer > 0) {
+        currentGap = rOffer >= cOffer ? 0 : (cOffer - rOffer);
       } else {
-        currentGap = Math.abs(agent0Offer - agent1Offer);
+        currentGap = Math.abs(rOffer - cOffer);
       }
+    } else if (sim.scenario_id === 'vendor-pricing') {
+      const buyer = agents.find((a) => {
+        const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+        return k.includes('buyer') || k.includes('procurement') || k.includes('purchasing');
+      }) || agents[0];
+      const seller = agents.find((a) => a !== buyer) || agents[1];
+      const bOffer = Number(buyer?.current_offer || 0);
+      const sOffer = Number(seller?.current_offer || 0);
+      if (bOffer > 0 && sOffer > 0) {
+        currentGap = bOffer >= sOffer ? 0 : (sOffer - bOffer);
+      } else {
+        currentGap = Math.abs(bOffer - sOffer);
+      }
+    } else {
+      const agent0Offer = Number(agents[0]?.current_offer || 0);
+      const agent1Offer = Number(agents[1]?.current_offer || 0);
+      currentGap = Math.abs(agent0Offer - agent1Offer);
     }
 
     // Require both primary participants to have actively tabled offers before evaluating gap convergence

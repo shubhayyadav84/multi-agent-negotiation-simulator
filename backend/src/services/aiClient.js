@@ -105,6 +105,9 @@ function generateDeterministicAgentMove({
   const scenarioId = (scenario?.id || scenario?.scenario_id || '').toLowerCase();
   const scenarioTitle = (scenario?.title || scenario?.scenario_title || '').toLowerCase();
   const role = (agent?.role || '').toLowerCase();
+  const name = (agent?.name || '').toLowerCase();
+  const agentId = (agent?.id || '').toLowerCase();
+  const agentDescriptor = `${agentId} ${role} ${name}`.toLowerCase();
   const personality = (agent?.personality || 'Collaborative').toLowerCase();
   const cpPersonality = (counterpart?.personality || 'Collaborative').toLowerCase();
   const currency = scenario?.currency || '₹';
@@ -142,10 +145,10 @@ function generateDeterministicAgentMove({
       ]);
     }
 
-    if (role.includes('engineering') || role.includes('infrastructure')) {
+    if (agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software')) {
       proposedOffer = engReq;
       terms = { engineeringFunding: engReq, total: 1000000 };
-    } else if (role.includes('marketing') || role.includes('growth')) {
+    } else if (agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo')) {
       proposedOffer = mktReq;
       terms = { marketingFunding: mktReq, total: 1000000 };
     } else {
@@ -155,7 +158,10 @@ function generateDeterministicAgentMove({
   }
   // Scenario 2: Job Offer / Compensation Negotiation (Bilateral)
   else if (scenarioId.includes('job') || scenarioId.includes('salary') || scenarioTitle.includes('job')) {
-    const isCandidate = role.includes('candidate') || role.includes('engineer');
+    const isCandidate = agentDescriptor.includes('candidate') ||
+                        agentDescriptor.includes('engineer') ||
+                        agentDescriptor.includes('applicant') ||
+                        agentDescriptor.includes('interviewee');
     if (isCandidate) {
       const salTarget = 175000;
       const salLimit = 160000;
@@ -239,10 +245,11 @@ function generateDeterministicAgentMove({
   }
   // Scenario 3: Vendor Pricing Negotiation (Standard Default)
   else {
-    const isBuyer = role.includes('buyer') ||
-                    role.includes('procurement') ||
-                    role.includes('candidate') ||
-                    role.includes('client');
+    const isBuyer = agentDescriptor.includes('buyer') ||
+                    agentDescriptor.includes('procurement') ||
+                    agentDescriptor.includes('purchasing') ||
+                    agentDescriptor.includes('purchase') ||
+                    agentDescriptor.includes('client');
 
     if (isBuyer) {
       const priceTarget = 95000;

@@ -5,7 +5,7 @@
 
 import { auth } from '../firebase/config';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://negotiator-backend-28r5.onrender.com';
 
 /**
  * Retrieve current user's Firebase ID token for Authorization header
@@ -215,7 +215,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
   const scenarioConfigs = {
     'vendor-pricing': {
       title: 'Vendor Pricing Negotiation',
-      defaultMaxRounds: 10,
+      defaultMaxRounds: 12,
       currency: '₹',
       agents: [
         {
@@ -329,7 +329,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
   const config = scenarioConfigs[scenarioId] || scenarioConfigs['vendor-pricing'];
 
   // Apply custom agent personalities and goals if provided
-  const effectiveAgents = config.agents.map((baseAgent, idx) => {
+  let effectiveAgents = config.agents.map((baseAgent, idx) => {
     if (Array.isArray(customAgents) && customAgents.length > 0) {
       const match = customAgents.find(
         (ca) =>
@@ -354,18 +354,10 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
 
   const hasHuman = effectiveAgents.some((a) => a.is_human === true || a.personality === 'Human');
   if (hasHuman) {
-    if (scenarioId === 'vendor-pricing') {
-      const seller = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
-      const buyer = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
-      if (seller && buyer) effectiveAgents = [seller, buyer];
-    } else if (scenarioId === 'job-offer') {
-      const recruiter = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
-      const candidate = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
-      if (recruiter && candidate) effectiveAgents = [recruiter, candidate];
-    } else if (scenarioId === 'project-budget') {
-      const aiAgents = effectiveAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
-      const humanAgents = effectiveAgents.filter((a) => a.personality === 'Human' || a.is_human === true);
-      if (aiAgents.length > 0 && humanAgents.length > 0) effectiveAgents = [...aiAgents, ...humanAgents];
+    const aiAgents = effectiveAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
+    const humanAgents = effectiveAgents.filter((a) => a.personality === 'Human' || a.is_human === true);
+    if (aiAgents.length > 0 && humanAgents.length > 0) {
+      effectiveAgents = [...aiAgents, ...humanAgents];
     }
   }
 
@@ -532,7 +524,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       const prodVal = 300000 - (!isEng && !isMkt ? roundConcession : Math.round(roundConcession * 0.6));
       const totalDemanded = engVal + mktVal + prodVal;
 
-      if (sim.current_round >= 6 || totalDemanded <= 1000000) {
+      if (totalDemanded <= 1000000) {
         moveAction = 'ACCEPT';
         moveOffer = isEng ? 410000 : (isMkt ? 325000 : 265000);
         moveMessage = `We agree to finalize the balanced ₹1,000,000 tripartite allocation: Engineering ₹410,000, Marketing ₹325,000, Product AI ₹265,000.`;
@@ -548,10 +540,15 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       }
     } else if (sim.scenario_id === 'job-offer') {
       const isCandidate = (activeAgent.role || '').toLowerCase().includes('candidate');
+      const cpAgent = agents.find(a => a !== activeAgent);
+      const cpPersonality = (cpAgent?.personality || '').toLowerCase();
+      const myPersonality = (activeAgent.personality || '').toLowerCase();
+      const isAggressiveMatch = cpPersonality.includes('aggressive') || myPersonality.includes('aggressive');
+
       if (isCandidate) {
         const candidateOffer = Math.round(175000 - progress * 10000);
-        const recruiterOffer = agents.find(a => a !== activeAgent)?.current_offer || 152000;
-        if (recruiterOffer >= candidateOffer || (rNum >= 5 && Math.abs(candidateOffer - recruiterOffer) <= 3000)) {
+        const recruiterOffer = cpAgent?.current_offer || 152000;
+        if (recruiterOffer >= candidateOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(candidateOffer - recruiterOffer) <= 2500)) {
           moveAction = 'ACCEPT';
           moveOffer = recruiterOffer;
           moveMessage = `Thank you for working through these terms. I am pleased to accept the agreed base salary of ₹${Number(moveOffer).toLocaleString()}.`;
@@ -561,8 +558,8 @@ function advanceLocalSimulation(simulationId, customMove = null) {
         }
       } else {
         const recruiterOffer = Math.round(152000 + progress * 12000);
-        const candidateOffer = agents.find(a => a !== activeAgent)?.current_offer || 175000;
-        if (recruiterOffer >= candidateOffer || (rNum >= 5 && Math.abs(candidateOffer - recruiterOffer) <= 3000)) {
+        const candidateOffer = cpAgent?.current_offer || 175000;
+        if (recruiterOffer >= candidateOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(candidateOffer - recruiterOffer) <= 2500)) {
           moveAction = 'ACCEPT';
           moveOffer = candidateOffer;
           moveMessage = `We are pleased to extend and finalize an agreed compensation of ₹${Number(moveOffer).toLocaleString()} base salary. Welcome to the team!`;
@@ -574,10 +571,15 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     } else {
       // Vendor Pricing Negotiation
       const isBuyer = (activeAgent.role || '').toLowerCase().includes('buyer') || (activeAgent.role || '').toLowerCase().includes('procurement');
+      const cpAgent = agents.find(a => a !== activeAgent);
+      const cpPersonality = (cpAgent?.personality || '').toLowerCase();
+      const myPersonality = (activeAgent.personality || '').toLowerCase();
+      const isAggressiveMatch = cpPersonality.includes('aggressive') || myPersonality.includes('aggressive');
+
       if (isBuyer) {
         const buyerOffer = Math.round(95000 + progress * 4000);
-        const sellerOffer = agents.find(a => a !== activeAgent)?.current_offer || 110000;
-        if (sellerOffer <= buyerOffer || (rNum >= 5 && Math.abs(sellerOffer - buyerOffer) <= 2500)) {
+        const sellerOffer = cpAgent?.current_offer || 110000;
+        if (sellerOffer <= buyerOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(sellerOffer - buyerOffer) <= 2000)) {
           moveAction = 'ACCEPT';
           moveOffer = sellerOffer;
           moveMessage = `We accept your proposed contract valuation of ₹${Number(moveOffer).toLocaleString()} with Net-60 payment terms.`;
@@ -587,8 +589,8 @@ function advanceLocalSimulation(simulationId, customMove = null) {
         }
       } else {
         const sellerOffer = Math.round(110000 - progress * 11000);
-        const buyerOffer = agents.find(a => a !== activeAgent)?.current_offer || 95000;
-        if (buyerOffer >= sellerOffer || (rNum >= 5 && Math.abs(sellerOffer - buyerOffer) <= 2500)) {
+        const buyerOffer = cpAgent?.current_offer || 95000;
+        if (buyerOffer >= sellerOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(sellerOffer - buyerOffer) <= 2000)) {
           moveAction = 'ACCEPT';
           moveOffer = buyerOffer;
           moveMessage = `We are pleased to accept your proposed contract value of ₹${Number(moveOffer).toLocaleString()} with Net-60 terms and four-week delivery.`;

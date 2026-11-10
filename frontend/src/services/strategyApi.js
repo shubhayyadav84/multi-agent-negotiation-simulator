@@ -4,7 +4,7 @@
 
 import { auth } from '../firebase/config';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://negotiator-backend-28r5.onrender.com';
 
 /**
  * Retrieve current user's Firebase ID token for Authorization header

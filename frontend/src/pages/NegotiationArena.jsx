@@ -232,7 +232,7 @@ const renderActionBadge = (actionStr, msg = null, allMessages = []) => {
 };
 
 const SCENARIO_OPTIONS = [
-  { id: 'vendor-pricing', title: 'Vendor Pricing Negotiation', maxRounds: 10 },
+  { id: 'vendor-pricing', title: 'Vendor Pricing Negotiation', maxRounds: 12 },
   { id: 'job-offer', title: 'Job Offer Negotiation', maxRounds: 8 },
   { id: 'project-budget', title: 'Project Budget Allocation', maxRounds: 12 },
 ];
@@ -598,22 +598,13 @@ const NegotiationArena = () => {
         });
 
         // Apply Practice Mode opening order:
-        // 1. Vendor Pricing: Seller opens first
-        // 2. Job Offer: Recruiter opens first
-        // 3. Project Budget: Human selected role NEVER starts opening offer; AI counterpart starts
+        // In Practice Mode, the AI counterpart ALWAYS starts the opening offer,
+        // so the human negotiator immediately arrives at an active "Your Turn to Bargain" turn!
         if (isPracticeMode) {
-          if (currentScenarioId === 'vendor-pricing') {
-            const seller = customAgents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
-            const buyer = customAgents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
-            if (seller && buyer) customAgents = [seller, buyer];
-          } else if (currentScenarioId === 'job-offer') {
-            const recruiter = customAgents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
-            const candidate = customAgents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
-            if (recruiter && candidate) customAgents = [recruiter, candidate];
-          } else if (currentScenarioId === 'project-budget') {
-            const aiAgents = customAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true && a.id !== location.state?.userRoleAgentId);
-            const humanAgents = customAgents.filter((a) => a.personality === 'Human' || a.is_human === true || a.id === location.state?.userRoleAgentId);
-            if (aiAgents.length > 0 && humanAgents.length > 0) customAgents = [...aiAgents, ...humanAgents];
+          const aiAgents = customAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true && a.id !== location.state?.userRoleAgentId);
+          const humanAgents = customAgents.filter((a) => a.personality === 'Human' || a.is_human === true || a.id === location.state?.userRoleAgentId);
+          if (aiAgents.length > 0 && humanAgents.length > 0) {
+            customAgents = [...aiAgents, ...humanAgents];
           }
         }
 
@@ -672,7 +663,8 @@ const NegotiationArena = () => {
       if (turnRunningRef.current) return;
 
       const cur = simulationRef.current || simulation;
-      if (cur.status !== 'RUNNING' || (cur.current_round >= (cur.max_rounds || 10) && cur.messages?.length > 10)) {
+      const maxLimit = Number(cur?.max_rounds || 12);
+      if (cur.status !== 'RUNNING' || Number(cur.current_round) > maxLimit) {
         setIsPaused(true);
         if (timerRef.current) clearInterval(timerRef.current);
         return;
@@ -684,7 +676,7 @@ const NegotiationArena = () => {
         const updated = await stepSimulation(simulation.id);
         if (updated) {
           setSimulation(updated);
-          if (updated.status !== 'RUNNING' || updated.current_round > (updated.max_rounds || 10)) {
+          if (updated.status !== 'RUNNING' || Number(updated.current_round) > Number(updated.max_rounds || maxLimit)) {
             setIsPaused(true);
             if (timerRef.current) clearInterval(timerRef.current);
           }
@@ -858,18 +850,10 @@ const NegotiationArena = () => {
       });
 
       if (isPracticeMode) {
-        if (currentScenarioId === 'vendor-pricing') {
-          const seller = customAgents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
-          const buyer = customAgents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
-          if (seller && buyer) customAgents = [seller, buyer];
-        } else if (currentScenarioId === 'job-offer') {
-          const recruiter = customAgents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
-          const candidate = customAgents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
-          if (recruiter && candidate) customAgents = [recruiter, candidate];
-        } else if (currentScenarioId === 'project-budget') {
-          const aiAgents = customAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true && a.id !== location.state?.userRoleAgentId);
-          const humanAgents = customAgents.filter((a) => a.personality === 'Human' || a.is_human === true || a.id === location.state?.userRoleAgentId);
-          if (aiAgents.length > 0 && humanAgents.length > 0) customAgents = [...aiAgents, ...humanAgents];
+        const aiAgents = customAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true && a.id !== location.state?.userRoleAgentId);
+        const humanAgents = customAgents.filter((a) => a.personality === 'Human' || a.is_human === true || a.id === location.state?.userRoleAgentId);
+        if (aiAgents.length > 0 && humanAgents.length > 0) {
+          customAgents = [...aiAgents, ...humanAgents];
         }
       }
 
@@ -1348,11 +1332,30 @@ const NegotiationArena = () => {
                           ))
                         );
 
-                        // Side placement: In Practice Mode, AI counterpart is on LEFT, Human is on RIGHT.
-                        // In Simulation Mode, Agent 0 (opening agent) is on LEFT, Agent 1 is on RIGHT.
-                        const isLeft = isPracticeMode
-                          ? !isHumanMsg
-                          : (senderAgent === activeAgentsList[0] || (turnIdx % 2 === 0));
+                        // Deterministic side placement:
+                        // Practice Mode: AI counterpart is on LEFT, Human user is on RIGHT.
+                        // Autonomous Simulation Mode:
+                        // - Vendor Pricing: Buyer is on LEFT, Seller is on RIGHT.
+                        // - Job Offer: Recruiter is on LEFT, Candidate is on RIGHT.
+                        // - Project Budget: Engineering & Product on LEFT, Marketing on RIGHT.
+                        let isLeft = true;
+                        if (isPracticeMode) {
+                          isLeft = !isHumanMsg;
+                        } else if (currentScenarioId === 'vendor-pricing') {
+                          const roleKey = `${senderAgent?.role || ''} ${senderAgent?.name || ''} ${msg.sender_role || ''} ${senderAgent?.id || ''}`.toLowerCase();
+                          const isSeller = roleKey.includes('seller') || roleKey.includes('vendor') || roleKey.includes('sales');
+                          isLeft = !isSeller;
+                        } else if (currentScenarioId === 'job-offer') {
+                          const roleKey = `${senderAgent?.role || ''} ${senderAgent?.name || ''} ${msg.sender_role || ''} ${senderAgent?.id || ''}`.toLowerCase();
+                          const isCandidate = roleKey.includes('candidate') || roleKey.includes('applicant');
+                          isLeft = !isCandidate;
+                        } else if (currentScenarioId === 'project-budget') {
+                          const roleKey = `${senderAgent?.role || ''} ${senderAgent?.name || ''} ${msg.sender_role || ''} ${senderAgent?.id || ''}`.toLowerCase();
+                          const isMarketing = roleKey.includes('marketing') || roleKey.includes('cmo') || roleKey.includes('growth');
+                          isLeft = !isMarketing;
+                        } else {
+                          isLeft = senderAgent?.id === activeAgentsList[0]?.id;
+                        }
 
                         turnIdx++;
 

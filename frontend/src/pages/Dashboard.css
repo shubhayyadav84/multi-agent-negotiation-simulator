@@ -472,14 +472,25 @@
 
 @media (max-width: 1024px) {
   .dashboard-hero-card {
-    grid-template-columns: 1fr;
-    min-height: auto;
+    grid-template-columns: 1fr !important;
+    min-height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .hero-content-col {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .hero-art-col {
-    padding-right: 0;
-    max-height: 240px;
-    padding: 0 20px 24px;
+    padding-right: 0 !important;
+    max-height: 240px !important;
+    padding: 0 20px 24px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .dashboard-steps-grid {

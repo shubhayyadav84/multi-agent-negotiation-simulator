@@ -1475,10 +1475,10 @@
   }
 
   .arena-transcript-body {
-    height: 360px !important;
-    max-height: 420px !important;
-    min-height: 240px !important;
-    overflow-y: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 180px !important;
+    overflow: visible !important;
     padding: 12px 8px !important;
   }
 
@@ -1528,10 +1528,14 @@
   }
 
   .arena-bubble-meta .arena-agent-name {
+    display: block !important;
+    width: 100% !important;
+    flex-basis: 100% !important;
     white-space: normal !important;
     word-break: normal !important;
-    font-size: 0.76rem !important;
+    font-size: 0.8rem !important;
     font-weight: 700 !important;
+    margin-bottom: 2px !important;
   }
 
   /* Message in ONE unified full-width box with offer attached neatly underneath */
@@ -3783,8 +3787,13 @@
 }
 
 @media (max-width: 480px) {
+  .page-container.arena-page-container,
   .arena-page-container {
-    padding: 10px 8px;
+    padding: 10px 8px 40px !important;
+    height: auto !important;
+    min-height: calc(100vh - var(--header-height, 72px)) !important;
+    max-height: none !important;
+    overflow-y: visible !important;
   }
 
   .arena-header-banner {

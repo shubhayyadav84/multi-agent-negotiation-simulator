@@ -20,7 +20,7 @@ const SCENARIO_PRESETS = {
     title: 'Vendor Pricing Negotiation',
     domain: 'Procurement & Sales',
     currency: '₹',
-    max_rounds: 10,
+    max_rounds: 12,
     agreement_threshold: 0, // Gap <= 0 (or exact match/crossover) considered agreement
     agents: [
       {
@@ -286,23 +286,14 @@ class OrchestratorAgent {
         })
       : preset.agents;
 
-    // Apply Practice Mode specific opening order:
-    // 1. Vendor Pricing: Opening offer from Seller
-    // 2. Job Offer: Opening offer from Recruiter
-    // 3. Project Budget: Human selected role NEVER starts; AI counterpart starts opening offer
+    // Apply Practice Mode opening order:
+    // In Practice Mode, the AI counterpart ALWAYS starts with the opening offer,
+    // so the human user arrives at an active "Your Turn to Bargain" prompt!
     if (isPractice) {
-      if (preset.id === 'vendor-pricing') {
-        const seller = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
-        const buyer = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
-        if (seller && buyer) effectiveAgents = [seller, buyer];
-      } else if (preset.id === 'job-offer') {
-        const recruiter = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
-        const candidate = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
-        if (recruiter && candidate) effectiveAgents = [recruiter, candidate];
-      } else if (preset.id === 'project-budget') {
-        const aiAgents = effectiveAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
-        const humanAgents = effectiveAgents.filter((a) => a.personality === 'Human' || a.is_human === true);
-        if (aiAgents.length > 0 && humanAgents.length > 0) effectiveAgents = [...aiAgents, ...humanAgents];
+      const aiAgents = effectiveAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
+      const humanAgents = effectiveAgents.filter((a) => a.personality === 'Human' || a.is_human === true);
+      if (aiAgents.length > 0 && humanAgents.length > 0) {
+        effectiveAgents = [...aiAgents, ...humanAgents];
       }
     }
 
@@ -428,10 +419,7 @@ class OrchestratorAgent {
       throw new Error('Simulation has no registered participating agents.');
     }
 
-    // In Practice Mode: Apply scenario-specific opening order
-    // 1. Vendor Pricing: Seller first, Buyer second
-    // 2. Job Offer: Recruiter first, Candidate second
-    // 3. Project Budget: Human selected role NEVER starts; AI counterpart starts opening offer
+    // In Practice Mode: Apply opening order where AI counterpart speaks first
     const simAgents = sim.agents || agents || [];
     const humanCount = simAgents.filter((a) => a.personality === 'Human' || a.is_human === true).length;
     const isPractice =
@@ -440,18 +428,10 @@ class OrchestratorAgent {
       (humanCount > 0 && humanCount < simAgents.length);
 
     if (isPractice) {
-      if (sim.scenario_id === 'vendor-pricing') {
-        const seller = agents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
-        const buyer = agents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
-        if (seller && buyer) agents = [seller, buyer];
-      } else if (sim.scenario_id === 'job-offer') {
-        const recruiter = agents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
-        const candidate = agents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
-        if (recruiter && candidate) agents = [recruiter, candidate];
-      } else if (sim.scenario_id === 'project-budget') {
-        const aiAgents = agents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
-        const humanAgents = agents.filter((a) => a.personality === 'Human' || a.is_human === true);
-        if (aiAgents.length > 0 && humanAgents.length > 0) agents = [...aiAgents, ...humanAgents];
+      const aiAgents = agents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
+      const humanAgents = agents.filter((a) => a.personality === 'Human' || a.is_human === true);
+      if (aiAgents.length > 0 && humanAgents.length > 0) {
+        agents = [...aiAgents, ...humanAgents];
       }
     } else if (sim.scenario_id && SCENARIO_PRESETS[sim.scenario_id]) {
       // In autonomous simulation mode: sort agents strictly by the canonical scenario preset order

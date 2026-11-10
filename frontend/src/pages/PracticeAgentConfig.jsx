@@ -39,7 +39,7 @@ const PRACTICE_ROLES_DATA = {
     name: 'Vendor Pricing Negotiation',
     category: 'Procurement & Supply Chain',
     accentColor: '#2563eb',
-    estimatedRounds: '8 Rounds Dynamic',
+    estimatedRounds: '12 Rounds Dynamic',
     participantText: '1 Human Negotiator vs 1 AI Agent',
     roles: [
       {

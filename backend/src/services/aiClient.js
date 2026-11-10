@@ -141,7 +141,11 @@ function generateDeterministicAgentMove({
     const isEng = agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software') || agentDescriptor.includes('vp-eng');
     const isMkt = agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo');
 
-    if (roundNumber >= 8 || totalDemanded <= 1000000) {
+    // Strict Project Budget rule: Agreement is reached ONLY if total departmental demands fit within the ₹10,00,000 ceiling!
+    // Never force acceptance if demands exceed the budget pool.
+    const isBudgetWithinCeiling = totalDemanded <= 1000000;
+    const isLateFeasible = roundNumber >= 7 && (totalDemanded - 1000000) <= 0;
+    if (isBudgetWithinCeiling || isLateFeasible) {
       // Balanced consensus allocation summing to exactly 1,000,000
       const engFinal = 410000;
       const mktFinal = 325000;
@@ -244,7 +248,7 @@ function generateDeterministicAgentMove({
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
-        } else if (counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 500 || roundNumber >= 8)) {
+        } else if (counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -290,7 +294,7 @@ function generateDeterministicAgentMove({
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
-        } else if (counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 500 || roundNumber >= 8)) {
+        } else if (counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;

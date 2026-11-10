@@ -3470,6 +3470,93 @@
     flex-basis: 100%;
   }
 }
+
+@media (max-width: 480px) {
+  .arena-page-container {
+    padding: 10px 8px;
+  }
+
+  .arena-header-banner {
+    padding: 14px 12px;
+  }
+
+  .arena-title {
+    font-size: 1.25rem;
+  }
+
+  .arena-control-bar {
+    padding: 10px 10px;
+    gap: 8px;
+  }
+
+  .arena-pills-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .arena-pill {
+    padding: 3px 8px;
+    font-size: 0.72rem;
+  }
+
+  .arena-actions-group {
+    width: 100%;
+    display: flex;
+    gap: 6px;
+  }
+
+  .btn-arena-pause,
+  .btn-arena-end,
+  .btn-arena-restart {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 0.74rem;
+    min-width: 0;
+  }
+
+  .arena-transcript-card {
+    height: 480px;
+    border-radius: 14px;
+    padding: 14px 10px;
+  }
+
+  .arena-message-item {
+    gap: 8px;
+  }
+
+  .arena-message-bubble {
+    padding: 10px 12px;
+    font-size: 0.84rem;
+    max-width: 90%;
+  }
+
+  .arena-dock-actions-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .btn-arena-send-message {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .arena-dock-detected-pill {
+    font-size: 0.76rem;
+    padding: 4px 8px;
+    word-break: break-word;
+  }
+
+  .arena-dock-quick-chips {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .arena-quick-chip {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+}
 /* TEXT TO SPEECH */
 .arena-message-tts-btn {
   width: 32px;

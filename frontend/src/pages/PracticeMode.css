@@ -532,6 +532,24 @@
   }
 }
 
+@media (max-width: 480px) {
+  .practice-selection-page {
+    gap: 16px;
+  }
+
+  .practice-main-title {
+    font-size: 1.4rem;
+  }
+
+  .practice-card-body {
+    padding: 16px 14px;
+  }
+
+  .practice-action-bar {
+    padding: 14px;
+  }
+}
+
 .btn-practice-secondary {
   padding: 10px 18px;
   border-radius: 12px;

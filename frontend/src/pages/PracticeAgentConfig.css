@@ -921,3 +921,27 @@
   }
 }
 
+@media (max-width: 480px) {
+  .practice-agent-config-page {
+    padding: 12px 10px 110px;
+    gap: 16px;
+  }
+
+  .practice-page-title {
+    font-size: 1.35rem;
+  }
+
+  .role-selection-card {
+    padding: 16px 12px;
+  }
+
+  .personality-pill-group {
+    flex-direction: column;
+  }
+
+  .btn-select-personality {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

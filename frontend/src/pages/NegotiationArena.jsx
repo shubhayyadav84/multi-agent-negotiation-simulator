@@ -65,8 +65,8 @@ const getDynamicStanceCategory = (agent, sim, isFirst) => {
   if (!agent) return 'Firm';
 
   // 1. If negotiation has ended with an agreement
-  const isCompleted = sim?.status === 'COMPLETED' || sim?.status === 'AGREEMENT_REACHED';
-  if (isCompleted && Boolean(sim?.agreement)) {
+  const isCompleted = sim?.status === 'COMPLETED' || sim?.status === 'AGREEMENT_REACHED' || Boolean(sim?.agreement);
+  if (isCompleted) {
     return 'Agreed';
   }
   if (sim?.status === 'DEADLOCK') {
@@ -76,23 +76,21 @@ const getDynamicStanceCategory = (agent, sim, isFirst) => {
   // 2. Count actual offers made by this specific agent in the transcript
   const agentRoleLower = (agent.role || '').toLowerCase();
   const agentNameLower = (agent.name || '').toLowerCase();
-  const agentOffers = (sim?.messages || []).filter(
-    (m) =>
-      (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') &&
-      m.offer_value &&
-      (
-        (m.sender_role && m.sender_role.toLowerCase() === agentRoleLower) ||
-        (m.sender_name && m.sender_name.toLowerCase() === agentNameLower)
-      )
-  );
+  const isHuman = agent.is_human === true || agent.personality === 'Human';
 
-  // If the agent has made 0 offers yet, they have not conceded anything -> Firm
-  if (agentOffers.length === 0) {
-    return 'Firm';
-  }
+  const agentOffers = (sim?.messages || []).filter((m) => {
+    if ((m.sender_type !== 'AGENT' && m.sender_type !== 'HUMAN') || !m.offer_value) return false;
+    if (isHuman && m.sender_type === 'HUMAN') return true;
+    const sRole = (m.sender_role || '').toLowerCase();
+    const sName = (m.sender_name || '').toLowerCase();
+    return (
+      (sRole && (sRole === agentRoleLower || agentRoleLower.includes(sRole) || sRole.includes(agentRoleLower))) ||
+      (sName && (sName === agentNameLower || agentNameLower.includes(sName) || sName.includes(agentNameLower)))
+    );
+  });
 
-  // If the agent has made only 1 opening offer -> Firm
-  if (agentOffers.length === 1) {
+  // If the agent has made 0 or 1 offer yet, they are holding firm at their opening position
+  if (agentOffers.length <= 1) {
     return 'Firm';
   }
 
@@ -106,7 +104,7 @@ const getDynamicStanceCategory = (agent, sim, isFirst) => {
     return 'Compromising';
   }
 
-  // If near round limit -> Cautious
+  // If near round limit without agreeing -> Cautious
   const round = sim?.current_round || 1;
   const maxR = sim?.max_rounds || 10;
   if (round >= maxR - 2) {

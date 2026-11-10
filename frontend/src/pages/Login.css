@@ -819,3 +819,23 @@
     font-size: 1.85rem;
   }
 }
+
+@media (max-width: 480px) {
+  .auth-page-container {
+    padding: 16px 12px;
+  }
+
+  .auth-card {
+    padding: 22px 16px;
+    border-radius: 16px;
+  }
+
+  .auth-hero-title {
+    font-size: 1.45rem;
+  }
+
+  .auth-tab-btn {
+    padding: 9px 12px;
+    font-size: 0.85rem;
+  }
+}

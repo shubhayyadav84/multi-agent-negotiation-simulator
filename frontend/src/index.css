@@ -845,6 +845,8 @@ body {
   .main-wrapper {
     margin-left: 0;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .app-header {
@@ -961,6 +963,42 @@ body {
 
   .personality-options-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-container {
+    padding: 14px 10px;
+  }
+
+  .app-header {
+    padding: 8px 10px;
+    min-height: 56px;
+    gap: 8px;
+  }
+
+  .header-title-group {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .header-page-title {
+    font-size: clamp(0.95rem, 4.2vw, 1.1rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-subtitle {
+    display: none;
+  }
+
+  .agent-role-card {
+    padding: 16px 12px;
+  }
+
+  .content-card {
+    padding: 16px 14px;
   }
 }
 

@@ -348,6 +348,63 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     assert.ok(!listB.some(s => s.id === simA.id), 'listB should NOT contain simA');
   });
 
+  await test('14. Multilateral Project Budget: 3 agents negotiate without premature Round 1 agreement, and Practice Mode requires Human participation', async () => {
+    // 1. Simulation Mode for project-budget has 3 agents and does not end in round 1
+    const budgetSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'project-budget',
+      maxRounds: 10,
+    });
+
+    assert.strictEqual(budgetSim.agents.length, 3, 'Project budget must have 3 participating agents');
+    assert.strictEqual(budgetSim.status, 'RUNNING');
+    assert.strictEqual(budgetSim.current_round, 1);
+
+    // Turn 2 in round 1 (Marketing Lead)
+    const turn2Result = await orchestratorService.advanceStep(budgetSim.id);
+    assert.strictEqual(turn2Result.advanced, true);
+    let currentSim = await db.getSimulation(budgetSim.id);
+    assert.strictEqual(currentSim.status, 'RUNNING', 'Must NOT conclude after turn 2 in round 1');
+
+    // Turn 3 in round 1 (Product AI Lead)
+    const turn3Result = await orchestratorService.advanceStep(budgetSim.id);
+    assert.strictEqual(turn3Result.advanced, true);
+    currentSim = await db.getSimulation(budgetSim.id);
+    assert.strictEqual(currentSim.status, 'RUNNING', 'Must NOT conclude at round 1 because demands start at ~₹1.1M');
+    assert.strictEqual(currentSim.current_round, 2, 'Should cleanly advance to Round 2');
+
+    // 2. Practice Mode with 3 agents: 2 AI and 1 Human
+    const practiceAgents = [
+      { id: 'head-product-ai', role: 'Product AI Lead', personality: 'Aggressive' },
+      { id: 'cmo-marketing', role: 'Marketing Lead', personality: 'Aggressive' },
+      { id: 'vp-engineering', role: 'Lead Software Engineer', personality: 'Human', is_human: true },
+    ];
+
+    const practiceSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'project-budget',
+      maxRounds: 10,
+      customAgents: practiceAgents,
+    });
+
+    assert.strictEqual(practiceSim.agents.length, 3);
+    assert.strictEqual(practiceSim.status, 'RUNNING');
+
+    // Turn 2 taken by second AI (Marketing Lead)
+    const pTurn2 = await orchestratorService.advanceStep(practiceSim.id);
+    assert.strictEqual(pTurn2.advanced, true);
+    let pSimState = await db.getSimulation(practiceSim.id);
+    assert.strictEqual(pSimState.status, 'RUNNING', 'AI vs AI must NOT conclude round 1 before Human turn');
+
+    // Turn 3: Attempting automatic advanceStep must wait for Human
+    const pTurn3Waiting = await orchestratorService.advanceStep(practiceSim.id);
+    assert.strictEqual(pTurn3Waiting.waitingForHuman, true, 'Must wait for human player');
+
+    // Human submits move with 3 values
+    const pHumanMove = await orchestratorService.advanceStep(practiceSim.id, {
+      message: 'Engineering requests 400000, Marketing 350000, Product 250000',
+    });
+    assert.strictEqual(pHumanMove.advanced, true);
+  });
+
   console.log(`\n========================================`);
   console.log(`Results: ${passedCount} Passed, ${failedCount} Failed`);
   console.log(`========================================\n`);

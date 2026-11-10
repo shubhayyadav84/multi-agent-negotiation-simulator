@@ -125,35 +125,92 @@ function generateDeterministicAgentMove({
 
   // Scenario 1: Project Budget Allocation (3-agent multilateral)
   if (scenarioId.includes('budget') || scenarioTitle.includes('budget')) {
-    const engReq = Math.round(450000 - concessionRate * 50000);
-    const mktReq = Math.round(350000 - concessionRate * 30000);
-    const prodReq = 1000000 - (engReq + mktReq);
+    const engConcessionMax = personality.includes('aggressive') ? 25000 : 50000;
+    const mktConcessionMax = personality.includes('aggressive') ? 20000 : 40000;
+    const prodConcessionMax = personality.includes('aggressive') ? 15000 : 35000;
 
-    if (roundNumber >= 8 || (Math.abs(engReq - 400000) <= 5000 && roundNumber >= 6)) {
+    // Independent departmental demands starting at target:
+    // Engineering: 450k (target) -> 400k (concession)
+    // Marketing: 350k (target) -> 310k (concession)
+    // Product AI: 300k (target) -> 265k (concession)
+    const engReq = Math.round(450000 - concessionRate * engConcessionMax);
+    const mktReq = Math.round(350000 - concessionRate * mktConcessionMax);
+    const prodReq = Math.round(300000 - concessionRate * prodConcessionMax);
+    const totalDemanded = engReq + mktReq + prodReq;
+
+    const isEng = agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software') || agentDescriptor.includes('vp-eng');
+    const isMkt = agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo');
+
+    if (roundNumber >= 8 || totalDemanded <= 1000000) {
+      // Balanced consensus allocation summing to exactly 1,000,000
+      const engFinal = 410000;
+      const mktFinal = 325000;
+      const prodFinal = 265000;
+
       action = 'ACCEPT';
       agreementReached = true;
       stance = 'Agreement reached';
+      proposedOffer = isEng ? engFinal : (isMkt ? mktFinal : prodFinal);
+      terms = {
+        engineeringFunding: engFinal,
+        marketingFunding: mktFinal,
+        productAIFunding: prodFinal,
+        total: 1000000,
+      };
       message = pickRandom([
-        `All teams align on the balanced ${currency}1,000,000 budget split: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`,
-        `Consensus finalized. We agree to the tripartite allocation: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`
+        `All three divisions agree to the balanced ${currency}1,000,000 allocation: Engineering ${currency}${engFinal.toLocaleString()}, Marketing ${currency}${mktFinal.toLocaleString()}, Product AI ${currency}${prodFinal.toLocaleString()}.`,
+        `Consensus finalized. We accept the tripartite distribution: Engineering ${currency}${engFinal.toLocaleString()}, Marketing ${currency}${mktFinal.toLocaleString()}, Product AI ${currency}${prodFinal.toLocaleString()}.`
       ]);
+    } else if (roundNumber === 1) {
+      stance = `${agent.personality} opening request`;
+      action = 'OFFER';
+      if (isEng) {
+        proposedOffer = engReq;
+        terms = { engineeringFunding: engReq, totalDemanded };
+        message = pickRandom([
+          `Engineering requests ${currency}${engReq.toLocaleString()} for database scaling, security hardening, and 99.99% uptime reliability. With division requests totaling ${currency}${totalDemanded.toLocaleString()} against our ${currency}1,000,000 ceiling, we must safeguard core platform infrastructure.`,
+          `Our technical roadmap requires ${currency}${engReq.toLocaleString()} capital for cloud infrastructure modernization. We need to prioritize core systems before secondary initiatives.`
+        ]);
+      } else if (isMkt) {
+        proposedOffer = mktReq;
+        terms = { marketingFunding: mktReq, totalDemanded };
+        message = pickRandom([
+          `Marketing requests ${currency}${mktReq.toLocaleString()} for global customer acquisition campaigns, brand partnerships, and event sponsorships. Strong growth is essential to achieve enterprise ROI.`,
+          `To drive necessary pipeline and revenue targets, Marketing requires ${currency}${mktReq.toLocaleString()} in dedicated campaign funding.`
+        ]);
+      } else {
+        proposedOffer = prodReq;
+        terms = { productAIFunding: prodReq, totalDemanded };
+        message = pickRandom([
+          `Product AI requests ${currency}${prodReq.toLocaleString()} for generative AI feature engineering and core UX enhancements. All three divisions must negotiate disciplined trade-offs to stay within our ${currency}1,000,000 limit.`,
+          `Delivering our customer-facing GenAI roadmap requires ${currency}${prodReq.toLocaleString()} funding. We propose reviewing shared dependencies to balance the budget.`
+        ]);
+      }
     } else {
-      stance = `${agent.personality} allocation review`;
-      message = pickRandom([
-        `Proposing balanced budget allocation: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`,
-        `To optimize cross-team ROI, our revised distribution is: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`
-      ]);
-    }
-
-    if (agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software')) {
-      proposedOffer = engReq;
-      terms = { engineeringFunding: engReq, total: 1000000 };
-    } else if (agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo')) {
-      proposedOffer = mktReq;
-      terms = { marketingFunding: mktReq, total: 1000000 };
-    } else {
-      proposedOffer = prodReq;
-      terms = { productAIFunding: prodReq, total: 1000000 };
+      stance = `${agent.personality} budget defense`;
+      action = 'COUNTER_OFFER';
+      if (isEng) {
+        proposedOffer = engReq;
+        terms = { engineeringFunding: engReq, totalDemanded };
+        message = pickRandom([
+          `Engineering can adjust our allocation ask to ${currency}${engReq.toLocaleString()} by phasing secondary tooling, provided our core platform uptime standards remain protected.`,
+          `We are willing to trim our requirement to ${currency}${engReq.toLocaleString()}, but further cuts would compromise database modernization.`
+        ]);
+      } else if (isMkt) {
+        proposedOffer = mktReq;
+        terms = { marketingFunding: mktReq, totalDemanded };
+        message = pickRandom([
+          `Marketing is prepared to refine our allocation ask to ${currency}${mktReq.toLocaleString()}, concentrating spend strictly on high-converting growth channels.`,
+          `To assist in closing the budget gap, Marketing can operate at ${currency}${mktReq.toLocaleString()} while protecting primary launch milestones.`
+        ]);
+      } else {
+        proposedOffer = prodReq;
+        terms = { productAIFunding: prodReq, totalDemanded };
+        message = pickRandom([
+          `Product AI proposes a revised ask of ${currency}${prodReq.toLocaleString()} by prioritizing essential feature deliverables for Q3.`,
+          `We can streamline our requirements to ${currency}${prodReq.toLocaleString()} to help bring all three departments within the overall ${currency}1,000,000 pool.`
+        ]);
+      }
     }
   }
   // Scenario 2: Job Offer / Compensation Negotiation (Bilateral)

@@ -54,7 +54,7 @@ test('3. Valid Project Budget Allocation configuration', () => {
   assert.equal(result.errors.length, 0);
   assert.ok(result.validatedConfig);
   assert.equal(result.validatedConfig.scenarioId, 'project-budget');
-  assert.equal(result.validatedConfig.agents.length, 2);
+  assert.equal(result.validatedConfig.agents.length, 3);
 });
 
 test('4. No scenario selected is rejected with actionable error message', () => {

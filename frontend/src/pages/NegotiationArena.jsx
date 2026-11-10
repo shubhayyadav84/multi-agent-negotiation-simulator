@@ -53,6 +53,7 @@ import {
   extractMonetaryOffer,
   detectNegotiationIntent,
   getMessageOffer,
+  extractProjectBudgetAllocations,
 } from '../utils/negotiationInteraction';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import './NegotiationArena.css';
@@ -142,15 +143,15 @@ const getFormattedAgentTitle = (agentOrMsg, target = 'transcript') => {
   } else if (combined.includes('candidate') || combined.includes('applicant') || combined.includes('interviewee')) {
     canonicalRole = 'Candidate';
     canonicalName = 'Job Candidate';
-  } else if (combined.includes('engineering') || combined.includes('lead software') || combined.includes('department a') || combined.includes('infrastructure')) {
+  } else if (combined.includes('engineering') || combined.includes('lead software') || combined.includes('department a') || combined.includes('infrastructure') || combined.includes('vp-eng')) {
     canonicalRole = 'Engineering Lead';
     canonicalName = 'VP of Engineering';
-  } else if (combined.includes('product')) {
-    canonicalRole = 'Product AI Lead';
-    canonicalName = 'Head of Product AI';
-  } else if (combined.includes('marketing') || combined.includes('growth') || combined.includes('department b')) {
+  } else if (combined.includes('marketing') || combined.includes('cmo') || combined.includes('growth') || combined.includes('department b')) {
     canonicalRole = 'Marketing Lead';
     canonicalName = 'Chief Marketing Officer';
+  } else if (combined.includes('product') || combined.includes('head-product') || combined.includes('department c')) {
+    canonicalRole = 'Product AI Lead';
+    canonicalName = 'Head of Product AI';
   }
 
   if (target === 'transcript') {
@@ -391,6 +392,7 @@ const NegotiationArena = () => {
 
   // Real-time detection of monetary amount in single chat input as user types
   const detectedOfferInInput = extractMonetaryOffer(practiceMessage);
+  const detectedBudgetSplit = currentScenarioId === 'project-budget' ? extractProjectBudgetAllocations(practiceMessage) : null;
 
   /**
    * Dispatches human negotiation messages via the single chat input
@@ -412,22 +414,44 @@ const NegotiationArena = () => {
 
     const intent = detectNegotiationIntent(text);
     const extractedOffer = extractMonetaryOffer(text);
+    const budgetSplit = currentScenarioId === 'project-budget' ? extractProjectBudgetAllocations(text) : null;
 
     let actionType = 'COUNTER_OFFER';
     let numericOffer = null;
+    let customTerms = {};
 
-    if (intent.isAccept) {
+    if (budgetSplit) {
+      customTerms = {
+        engineering: budgetSplit.engineering,
+        marketing: budgetSplit.marketing,
+        product: budgetSplit.product,
+        total: budgetSplit.total,
+      };
+
+      const userRoleKey = `${humanAgent?.id || ''} ${humanAgent?.role || ''} ${humanAgent?.name || ''}`.toLowerCase();
+      if (userRoleKey.includes('engineering') || userRoleKey.includes('software') || userRoleKey.includes('tech') || userRoleKey.includes('infra') || userRoleKey.includes('vp-eng')) {
+        numericOffer = budgetSplit.engineering;
+      } else if (userRoleKey.includes('marketing') || userRoleKey.includes('growth') || userRoleKey.includes('cmo')) {
+        numericOffer = budgetSplit.marketing;
+      } else {
+        numericOffer = budgetSplit.product;
+      }
+
+      actionType = isOpeningMove ? 'OFFER' : 'COUNTER_OFFER';
+    } else if (intent.isAccept) {
       actionType = 'ACCEPT';
-      // Find counterpart's latest proposed offer in messages or counterpart agent
-      const counterpartMessages = (simulation?.messages || []).filter(
-        (m) => m.sender_type !== 'ORCHESTRATOR' && (m.sender_type === 'AGENT' || m.sender_role !== humanAgent?.role)
-      );
-      const lastCounterpartOfferMsg = [...counterpartMessages].reverse().find(
-        (m) => getMessageOffer(m)
-      );
-      numericOffer = lastCounterpartOfferMsg
-        ? getMessageOffer(lastCounterpartOfferMsg)
-        : (opponentAgent?.current_offer || (currentScenarioId === 'vendor-pricing' ? 10000 : 165000));
+      numericOffer = humanAgent?.current_offer || (currentScenarioId === 'project-budget' ? 380000 : null);
+      if (numericOffer === null) {
+        const counterpartMessages = (simulation?.messages || []).filter(
+          (m) => m.sender_type !== 'ORCHESTRATOR' && (m.sender_type === 'AGENT' || m.sender_role !== humanAgent?.role)
+        );
+        const lastCounterpartOfferMsg = [...counterpartMessages].reverse().find(
+          (m) => getMessageOffer(m)
+        );
+        numericOffer = lastCounterpartOfferMsg
+          ? getMessageOffer(lastCounterpartOfferMsg)
+          : (opponentAgent?.current_offer || (currentScenarioId === 'vendor-pricing' ? 10000 : 165000));
+      }
     } else if (intent.isReject) {
       actionType = 'REJECT';
       numericOffer = null;
@@ -449,6 +473,7 @@ const NegotiationArena = () => {
         message: text,
         offer_value: numericOffer,
         action: actionType,
+        terms: customTerms,
       });
       if (updated) {
         setSimulation(updated);
@@ -523,7 +548,7 @@ const NegotiationArena = () => {
             (currentScenarioId === 'job-offer'
               ? (idx === 0 ? 'hiring-director' : 'job-candidate')
               : currentScenarioId === 'project-budget'
-              ? (idx === 0 ? 'department-a' : 'department-b')
+              ? (idx === 0 ? 'vp-engineering' : idx === 1 ? 'cmo-marketing' : 'head-product-ai')
               : (idx === 0 ? 'buyer-procurement' : 'vendor-sales'));
           const personality =
             effectivePersonalities?.[a.id] ||
@@ -771,7 +796,7 @@ const NegotiationArena = () => {
           (currentScenarioId === 'job-offer'
             ? (idx === 0 ? 'hiring-director' : 'job-candidate')
             : currentScenarioId === 'project-budget'
-            ? (idx === 0 ? 'department-a' : 'department-b')
+            ? (idx === 0 ? 'vp-engineering' : idx === 1 ? 'cmo-marketing' : 'head-product-ai')
             : (idx === 0 ? 'buyer-procurement' : 'vendor-sales'));
         const personality =
           effectivePersonalities?.[a.id] ||
@@ -888,7 +913,7 @@ const NegotiationArena = () => {
       (currentScenarioId === 'job-offer'
         ? (idx === 0 ? 'hiring-director' : 'job-candidate')
         : currentScenarioId === 'project-budget'
-        ? (idx === 0 ? 'department-a' : idx === 1 ? 'department-b' : 'department-c')
+        ? (idx === 0 ? 'vp-engineering' : idx === 1 ? 'cmo-marketing' : 'head-product-ai')
         : (idx === 0 ? 'buyer-procurement' : 'vendor-sales'));
 
     const configuredPersonality =
@@ -1470,11 +1495,25 @@ const NegotiationArena = () => {
                     <MessageSquare size={13} />
                     <span>Negotiation Chat Input</span>
                   </label>
-                  {detectedOfferInInput && (
+                  {detectedBudgetSplit ? (
+                    <span
+                      className="arena-dock-detected-pill"
+                      style={{
+                        borderColor: detectedBudgetSplit.isValidBudget ? '#10b981' : '#f59e0b',
+                        color: detectedBudgetSplit.isValidBudget ? '#047857' : '#b45309',
+                        background: detectedBudgetSplit.isValidBudget ? '#ecfdf5' : '#fffbeb',
+                      }}
+                    >
+                      <Tag size={11} /> Detected Split: <strong>Eng ₹{detectedBudgetSplit.engineering?.toLocaleString()} | Mkt ₹{detectedBudgetSplit.marketing?.toLocaleString()} | Prod ₹{detectedBudgetSplit.product?.toLocaleString()}</strong>
+                      <span style={{ marginLeft: 6, fontSize: '0.8rem', opacity: 0.85 }}>
+                        (Total: ₹{detectedBudgetSplit.total?.toLocaleString()}{detectedBudgetSplit.isValidBudget ? ' ✓ Fits ₹10L' : ' ✕ Over ₹10L'})
+                      </span>
+                    </span>
+                  ) : detectedOfferInInput ? (
                     <span className="arena-dock-detected-pill">
                       <Tag size={11} /> Detected Offer: <strong>₹{Number(detectedOfferInInput).toLocaleString()}</strong>
                     </span>
-                  )}
+                  ) : null}
                   <span className="arena-dock-char-count">{practiceMessage.length}/1000</span>
                 </div>
                 <textarea
@@ -1485,8 +1524,12 @@ const NegotiationArena = () => {
                       ? "Negotiation has concluded. Inspect the summary report above or restart to begin a new session."
                       : isHumanTurn && !turnRunning
                         ? isOpeningMove
-                          ? "State your opening proposal or offer (e.g. 'I can adjust my salary expectation to ₹173,500' or '₹165,000')..."
-                          : "Type your offer, response, or question (e.g. 'I propose ₹160,000' or 'I accept the deal')..."
+                          ? currentScenarioId === 'project-budget'
+                            ? "State your opening budget ask (e.g. 'I need ₹400,000') or propose a tripartite split (e.g. 'Engineering 400k, Marketing 350k, Product 250k')..."
+                            : "State your opening proposal or offer (e.g. 'I can adjust my salary expectation to ₹173,500' or '₹165,000')..."
+                          : currentScenarioId === 'project-budget'
+                            ? "Enter your department ask (e.g. '₹380,000' or '380k') or propose a 3-way split (e.g. 'Engineering 400k, Marketing 340k, Product 260k')..."
+                            : "Type your offer, response, or question (e.g. 'I propose ₹160,000' or 'I accept the deal')..."
                         : "AI counterpart is reviewing the dialogue and formulating a response..."
                   }
                   value={practiceMessage}
@@ -1508,6 +1551,17 @@ const NegotiationArena = () => {
                 {!isTerminated && isHumanTurn && !turnRunning && (
                   <div className="arena-dock-quick-chips">
                     <span className="quick-chips-label">Quick options:</span>
+                    {currentScenarioId === 'project-budget' && (
+                      <button
+                        type="button"
+                        className="arena-quick-chip"
+                        disabled={!isHumanTurn || turnRunning || isTerminated}
+                        onClick={() => setPracticeMessage("I propose: Engineering ₹400,000, Marketing ₹340,000, Product AI ₹260,000.")}
+                        title="Propose balanced 10 Lakh split across 3 departments"
+                      >
+                        "Propose ₹10L Split"
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="arena-quick-chip"

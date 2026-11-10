@@ -183,13 +183,94 @@ export function detectNegotiationIntent(text) {
 }
 
 /**
+ * Detects and extracts tripartite departmental budget allocations
+ * from user or AI dialogue in Project Budget Allocation scenarios.
+ * Handles inputs like:
+ * - "Engineering 400k, Marketing 350k, Product 250k"
+ * - "400k, 350k, 250k" or "400000, 350000, 250000"
+ * - "40L, 35L, 25L" or "₹4,00,000 / ₹3,50,000 / ₹2,50,000"
+ */
+export function extractProjectBudgetAllocations(text) {
+  if (!text || typeof text !== 'string') return null;
+  const str = text.trim();
+  if (!str) return null;
+
+  const parseTokenAmount = (token) => {
+    if (!token) return null;
+    return extractMonetaryOffer(token.trim());
+  };
+
+  // 1. Labeled pattern: e.g. "Engineering 400k, Marketing 350k, Product 250k"
+  const engMatch = str.match(/(?:eng(?:ineering)?|lead software|infra(?:structure)?|dept\s*a)\D{0,15}((?:₹|Rs\.?|\$)?\s*\d[\d,\.]*\s*(?:k|lakhs?|lacs?|crores?|lpa)?)/i);
+  const mktMatch = str.match(/(?:mkt|marketing|growth|cmo|dept\s*b)\D{0,15}((?:₹|Rs\.?|\$)?\s*\d[\d,\.]*\s*(?:k|lakhs?|lacs?|crores?|lpa)?)/i);
+  const prodMatch = str.match(/(?:prod(?:uct)?|ai|pm|dept\s*c)\D{0,15}((?:₹|Rs\.?|\$)?\s*\d[\d,\.]*\s*(?:k|lakhs?|lacs?|crores?|lpa)?)/i);
+
+  if (engMatch && mktMatch && prodMatch) {
+    const engVal = parseTokenAmount(engMatch[1]);
+    const mktVal = parseTokenAmount(mktMatch[1]);
+    const prodVal = parseTokenAmount(prodMatch[1]);
+
+    if (engVal && mktVal && prodVal) {
+      const total = engVal + mktVal + prodVal;
+      return {
+        engineering: engVal,
+        marketing: mktVal,
+        product: prodVal,
+        total,
+        isValidBudget: total <= 1000000,
+      };
+    }
+  }
+
+  // 2. Delimited sequence of 3 amounts: e.g. "400k, 350k, 250k" or "400000, 350000, 250000" or "400k / 350k / 250k"
+  const tokens = str.split(/[,/;\+]|\band\b/i).map((s) => s.trim()).filter(Boolean);
+  if (tokens.length >= 3) {
+    const parsedAmounts = tokens.map(parseTokenAmount).filter((val) => val !== null && val > 0);
+    if (parsedAmounts.length === 3) {
+      const [engVal, mktVal, prodVal] = parsedAmounts;
+      const total = engVal + mktVal + prodVal;
+      return {
+        engineering: engVal,
+        marketing: mktVal,
+        product: prodVal,
+        total,
+        isValidBudget: total <= 1000000,
+      };
+    }
+  }
+
+  // 3. Search for 3 distinct money tokens separated by whitespace or punctuation
+  const allNumbers = [];
+  const tokenRegex = /(?:₹|Rs\.?|\$)?\s*(\d+(?:,\d+)*(?:\.\d+)?)\s*(k|lakhs?|lacs?|crores?|thousand|thousands|lpa)?\b/gi;
+  let match;
+  while ((match = tokenRegex.exec(str)) !== null) {
+    const parsed = parseTokenAmount(match[0]);
+    if (parsed && parsed >= 1000 && !allNumbers.includes(parsed)) {
+      allNumbers.push(parsed);
+    }
+  }
+
+  if (allNumbers.length === 3) {
+    const [engVal, mktVal, prodVal] = allNumbers;
+    const total = engVal + mktVal + prodVal;
+    return {
+      engineering: engVal,
+      marketing: mktVal,
+      product: prodVal,
+      total,
+      isValidBudget: total <= 1000000,
+    };
+  }
+
+  return null;
+}
+
+/**
  * Extracts and displays the monetary offer from a message (User or AI).
  * Returns null if the message contains no actual monetary proposal.
  */
 export function getMessageOffer(msg) {
   if (!msg) return null;
-  const extracted = extractMonetaryOffer(msg.message);
-  if (extracted !== null) return extracted;
 
   // Filter out non-monetary chit-chat/greetings inheriting an old offer_value
   const lower = (msg.message || '').toLowerCase();
@@ -199,9 +280,19 @@ export function getMessageOffer(msg) {
     /\b(accept|agreed?|let'?s finalize|happy with this agreement|we have a deal)\b/i.test(lower) ||
     /\b(reject|don't want to proceed|cannot accept|can't accept|end this negotiation|decline|walk away)\b/i.test(lower);
 
-  if (!isChitChatOrGreeting && msg.offer_value && (msg.action === 'OFFER' || msg.action === 'COUNTER_OFFER')) {
-    return msg.offer_value;
+  if (isChitChatOrGreeting) return null;
+
+  // 1. If explicit offer_value was stored for this specific agent's move, prefer it!
+  // This guarantees that in tripartite dialogues listing multiple numbers,
+  // each agent's bubble displays THEIR OWN requested offer amount.
+  if (msg.offer_value !== undefined && msg.offer_value !== null && Number(msg.offer_value) > 0) {
+    return Number(msg.offer_value);
   }
+
+  // 2. Fallback to parsing text proposal if offer_value is missing
+  const extracted = extractMonetaryOffer(msg.message);
+  if (extracted !== null) return extracted;
+
   return null;
 }
 

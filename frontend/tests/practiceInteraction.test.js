@@ -4,6 +4,7 @@ import {
   extractMonetaryOffer,
   detectNegotiationIntent,
   getMessageOffer,
+  extractProjectBudgetAllocations,
 } from '../src/utils/negotiationInteraction.js';
 
 test('1. Automatic Offer Amount Detection for various currency & number formats', () => {
@@ -148,4 +149,43 @@ test('6. getMessageOffer dynamically attaches offer badge for monetary messages 
     getMessageOffer({ message: 'I cannot accept this offer. Let\'s end the negotiation.', offer_value: null }),
     null
   );
+});
+
+test('7. extractProjectBudgetAllocations correctly detects three separate departmental values', () => {
+  // Labeled formats
+  const labeled = extractProjectBudgetAllocations('Engineering ₹400,000, Marketing ₹350,000, Product AI ₹250,000');
+  assert.ok(labeled);
+  assert.strictEqual(labeled.engineering, 400000);
+  assert.strictEqual(labeled.marketing, 350000);
+  assert.strictEqual(labeled.product, 250000);
+  assert.strictEqual(labeled.total, 1000000);
+  assert.strictEqual(labeled.isValidBudget, true);
+
+  // Comma delimited short format (400k, 350k, 250k)
+  const shortFormat = extractProjectBudgetAllocations('400k, 350k, 250k');
+  assert.ok(shortFormat);
+  assert.strictEqual(shortFormat.engineering, 400000);
+  assert.strictEqual(shortFormat.marketing, 350000);
+  assert.strictEqual(shortFormat.product, 250000);
+  assert.strictEqual(shortFormat.total, 1000000);
+  assert.strictEqual(shortFormat.isValidBudget, true);
+
+  // Over budget proposal
+  const overBudget = extractProjectBudgetAllocations('Engineering 450k, Marketing 350k, Product 300k');
+  assert.ok(overBudget);
+  assert.strictEqual(overBudget.total, 1100000);
+  assert.strictEqual(overBudget.isValidBudget, false);
+
+  // Single value does NOT match tripartite split
+  assert.strictEqual(extractProjectBudgetAllocations('My offer 400k'), null);
+});
+
+test('8. getMessageOffer respects explicit agent offer_value over first string match', () => {
+  // Marketing Lead proposed 350,000, even though the text mentions Engineering 450,000 first
+  const mktMsg = {
+    message: 'To optimize cross-team ROI, our revised distribution is: Engineering ₹450,000, Marketing ₹350,000, Product AI ₹200,000.',
+    offer_value: 350000,
+    action: 'COUNTER_OFFER',
+  };
+  assert.strictEqual(getMessageOffer(mktMsg), 350000);
 });

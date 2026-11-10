@@ -346,11 +346,11 @@ class OrchestratorAgent {
       if (combined.includes('engineering') || combined.includes('infrastructure') || combined.includes('department a')) {
         return 'Engineering Lead (VP of Engineering)';
       }
-      if (combined.includes('product')) {
-        return 'Product AI Lead (Head of Product AI)';
-      }
-      if (combined.includes('marketing') || combined.includes('department b')) {
+      if (combined.includes('marketing') || combined.includes('cmo') || combined.includes('growth') || combined.includes('department b')) {
         return 'Marketing Lead (Chief Marketing Officer)';
+      }
+      if (combined.includes('product') || combined.includes('head-product') || combined.includes('department c')) {
+        return 'Product AI Lead (Head of Product AI)';
       }
       return a.role && a.name && a.role !== a.name ? `${a.role} (${a.name})` : (a.role || a.name || 'Participant');
     };
@@ -526,6 +526,10 @@ class OrchestratorAgent {
     const { activeAgent, counterpartAgent, isRoundEnd } = this.determineNextTurn(sim);
     const preset = this.getScenarioPreset(sim.scenario_id);
     const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true;
+    const simAgents = sim.agents || [];
+    const humanCount = simAgents.filter(a => a.is_human === true || a.personality === 'Human').length;
+    const isPractice = (sim.id && sim.id.startsWith('practice_')) ||
+      (humanCount > 0 && humanCount < simAgents.length);
 
     // Guard: if it's a human turn and no move was provided by human, do NOT generate an automated AI response!
     if (isHumanTurn && !customMove) {
@@ -541,16 +545,32 @@ class OrchestratorAgent {
     let move;
     if (isHumanTurn && customMove) {
       let offerVal = customMove.offer_value;
-      if (offerVal === undefined) {
-        const numMatch = (customMove.message || '').replace(/,/g, '').match(/(?:₹|\$)?\s*(\d{4,9})/);
-        if (numMatch) {
-          offerVal = Number(numMatch[1]);
-        } else {
-          const thousandMatch = (customMove.message || '').match(/(\d+(?:\.\d+)?)\s*(?:thousand|thousands|k)\b/i);
-          if (thousandMatch) {
-            offerVal = Math.round(parseFloat(thousandMatch[1]) * 1000);
+      if (offerVal === undefined || offerVal === null) {
+        // Check for 3-department allocation in project-budget
+        if (sim.scenario_id === 'project-budget') {
+          const threeNums = (customMove.message || '').replace(/,/g, '').match(/\b(\d{5,9})\b/g);
+          if (threeNums && threeNums.length >= 3) {
+            const roleKey = `${activeAgent.id || ''} ${activeAgent.role || ''} ${activeAgent.name || ''}`.toLowerCase();
+            if (roleKey.includes('engineering') || roleKey.includes('software') || roleKey.includes('infra')) {
+              offerVal = Number(threeNums[0]);
+            } else if (roleKey.includes('marketing') || roleKey.includes('growth') || roleKey.includes('cmo')) {
+              offerVal = Number(threeNums[1]);
+            } else {
+              offerVal = Number(threeNums[2]);
+            }
+          }
+        }
+        if (offerVal === undefined || offerVal === null) {
+          const numMatch = (customMove.message || '').replace(/,/g, '').match(/(?:₹|\$)?\s*(\d{4,9})/);
+          if (numMatch) {
+            offerVal = Number(numMatch[1]);
           } else {
-            offerVal = null;
+            const thousandMatch = (customMove.message || '').match(/(\d+(?:\.\d+)?)\s*(?:thousand|thousands|k)\b/i);
+            if (thousandMatch) {
+              offerVal = Math.round(parseFloat(thousandMatch[1]) * 1000);
+            } else {
+              offerVal = null;
+            }
           }
         }
       }
@@ -720,7 +740,8 @@ const fixedOffer =
       (m) => (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') && m.offer_value
     );
     const uniqueOfferSenders = new Set(activeOfferMessages.map((m) => m.sender_role || m.sender_name));
-    const bothHaveOffered = uniqueOfferSenders.size >= Math.min(2, agents.length);
+    const allHaveOffered = uniqueOfferSenders.size >= agents.length;
+    const bothHaveOffered = allHaveOffered;
 // Check whether the negotiation is reaching a deadlock
 const deadlock = this.detectDeadlock(updatedSim);
 
@@ -781,7 +802,18 @@ if (deadlock.detected && !compromiseAlreadyAttempted) {
       settlementPrice: move.offer_value || (currentGap <= threshold ? Math.round((agent0Offer + agent1Offer) / 2) : (agent1Offer || agent0Offer)),
       activeAgent,
       bothHaveOffered,
+      allHaveOffered,
+      totalAgents: agents.length,
+      isPractice,
     });
+
+    // Guard for Practice Mode & Multilateral Negotiations:
+    // A round is not concluded until every participant in that round has taken their turn!
+    // Agreement CANNOT be reached mid-round while awaiting the human player or third agent.
+    if ((isPractice || agents.length > 2) && !isRoundEnd && stoppingEvaluation.finalStatus === 'COMPLETED') {
+      stoppingEvaluation.shouldStop = false;
+      stoppingEvaluation.finalStatus = 'RUNNING';
+    }
     // Apply detected deadlock after the compromise attempt
 if (
   deadlockShouldStop &&
@@ -878,17 +910,27 @@ if (
     settlementPrice,
     activeAgent,
     bothHaveOffered,
+    allHaveOffered,
+    totalAgents = 2,
+    isPractice = false,
   }) {
     // Condition A: Explicit or Numerical Agreement
     const isExplicitAccept = action === 'ACCEPT' || agreementReached === true;
-    const isGapConverged = bothHaveOffered && currentGap <= threshold && currentGap >= 0;
+    const hasSufficientOffers = typeof allHaveOffered === 'boolean'
+      ? allHaveOffered
+      : (bothHaveOffered ?? true);
+
+    const isMultiPartyOrPractice = totalAgents > 2 || isPractice;
+    const isGapConverged = isMultiPartyOrPractice
+      ? (isRoundEnd && hasSufficientOffers && currentGap <= threshold && currentGap >= 0)
+      : (hasSufficientOffers && currentGap <= threshold && currentGap >= 0);
 
     if (isExplicitAccept || isGapConverged) {
       return {
         shouldStop: true,
         finalStatus: 'COMPLETED',
         agreedValue: settlementPrice,
-        orchestratorMessage: `Congratulations! Both parties have successfully reached an agreement. The negotiation has been concluded.`,
+        orchestratorMessage: `Congratulations! All participating parties have successfully reached an agreement. The negotiation has been concluded.`,
       };
     }
     // Condition B: Negotiation Breakdown on Hard Rejection

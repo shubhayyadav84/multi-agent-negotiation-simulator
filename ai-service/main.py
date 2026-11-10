@@ -694,26 +694,68 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
     # Scenario 3: Project Budget Allocation (Tripartite 1,000,000)
     # -------------------------------------------------------------
     else:
-        eng_req = int(450000 - concession_rate * 50000)
-        mkt_req = int(350000 - concession_rate * 30000)
-        prod_req = 1000000 - (eng_req + mkt_req)
+        eng_concession_max = 25000 if "aggressive" in p_name.lower() else 50000
+        mkt_concession_max = 20000 if "aggressive" in p_name.lower() else 40000
+        prod_concession_max = 15000 if "aggressive" in p_name.lower() else 35000
 
-        proposed_offer = {
-            "engineering": eng_req,
-            "marketing": mkt_req,
-            "product_ai": prod_req,
-        }
+        eng_req = int(450000 - concession_rate * eng_concession_max)
+        mkt_req = int(350000 - concession_rate * mkt_concession_max)
+        prod_req = int(300000 - concession_rate * prod_concession_max)
+        total_demanded = eng_req + mkt_req + prod_req
 
-        if round_num >= 8 or (abs(eng_req - 400000) <= 5000 and round_num >= 6):
+        is_eng = any(term in agent_id for term in ("engineering", "infrastructure", "vp-engineering", "department-a"))
+        is_mkt = any(term in agent_id for term in ("marketing", "growth", "cmo", "department-b"))
+
+        if round_num >= 8 or total_demanded <= 1000000:
+            eng_final = 410000
+            mkt_final = 325000
+            prod_final = 265000
             action = "ACCEPT"
             agreement = True
             stance = "Consensus finalized"
-            msg = f"All departments agree on the balanced {currency}1,000,000 allocation: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,}."
+            msg = f"All departments agree on the balanced {currency}1,000,000 allocation: Engineering {currency}{eng_final:,}, Marketing {currency}{mkt_final:,}, Product AI {currency}{prod_final:,}."
+            offer_val = float(eng_final if is_eng else (mkt_final if is_mkt else prod_final))
+            proposed_offer = {
+                "engineering": eng_final,
+                "marketing": mkt_final,
+                "product_ai": prod_final,
+            }
+        elif round_num == 1:
+            action = "OFFER"
+            agreement = False
+            stance = f"{p_name} opening request"
+            if is_eng:
+                offer_val = float(eng_req)
+                msg = f"Engineering requests {currency}{eng_req:,} for database scaling and platform uptime reliability. Initial bids total {currency}{total_demanded:,} against our {currency}1,000,000 ceiling."
+            elif is_mkt:
+                offer_val = float(mkt_req)
+                msg = f"Marketing requests {currency}{mkt_req:,} for global customer acquisition and brand growth campaigns to drive required enterprise ROI."
+            else:
+                offer_val = float(prod_req)
+                msg = f"Product AI requests {currency}{prod_req:,} for GenAI model integrations and UX development to meet roadmap deliverables."
+            proposed_offer = {
+                "engineering": eng_req,
+                "marketing": mkt_req,
+                "product_ai": prod_req,
+            }
         else:
-            stance = f"{p_name} allocation review"
-            msg = f"Proposed allocation balance: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,} (Total {currency}1,000,000)."
-
-        offer_val = float(proposed_offer.get(agent_id.replace("vp-", "").replace("cmo-", "").replace("head-", "").replace("-", "_"), 350000))
+            action = "COUNTER_OFFER"
+            agreement = False
+            stance = f"{p_name} budget defense"
+            if is_eng:
+                offer_val = float(eng_req)
+                msg = f"Engineering can adjust our allocation to {currency}{eng_req:,} by phasing secondary tooling, provided core uptime standards remain protected."
+            elif is_mkt:
+                offer_val = float(mkt_req)
+                msg = f"Marketing is prepared to refine our allocation ask to {currency}{mkt_req:,}, concentrating spend on high-converting growth channels."
+            else:
+                offer_val = float(prod_req)
+                msg = f"Product AI proposes a revised ask of {currency}{prod_req:,} by prioritizing essential Q3 feature releases."
+            proposed_offer = {
+                "engineering": eng_req,
+                "marketing": mkt_req,
+                "product_ai": prod_req,
+            }
 
     is_valid, validation_result = validate_proposed_offer(
         scenario_id, agent_id, proposed_offer

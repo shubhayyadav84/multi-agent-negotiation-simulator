@@ -655,15 +655,22 @@ const NegotiationArena = () => {
     timerRef.current = setInterval(async () => {
       if (turnRunningRef.current) return;
 
+      const cur = simulationRef.current || simulation;
+      if (cur.status !== 'RUNNING' || (cur.current_round >= (cur.max_rounds || 10) && cur.messages?.length > 10)) {
+        setIsPaused(true);
+        if (timerRef.current) clearInterval(timerRef.current);
+        return;
+      }
+
       turnRunningRef.current = true;
       setTurnRunning(true);
       try {
         const updated = await stepSimulation(simulation.id);
         if (updated) {
           setSimulation(updated);
-          if (updated.status !== 'RUNNING') {
+          if (updated.status !== 'RUNNING' || updated.current_round > (updated.max_rounds || 10)) {
             setIsPaused(true);
-            clearInterval(timerRef.current);
+            if (timerRef.current) clearInterval(timerRef.current);
           }
         }
       } catch (err) {
@@ -672,7 +679,7 @@ const NegotiationArena = () => {
         turnRunningRef.current = false;
         setTurnRunning(false);
       }
-    }, 1200);
+    }, 3500);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);

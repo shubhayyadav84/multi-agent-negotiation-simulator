@@ -435,7 +435,13 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     localSimulationsCache.set(simulationId, sim);
   }
 
-  if (sim.status !== 'RUNNING') return sim;
+  const maxR = Number(sim.max_rounds || 10);
+  if (sim.status !== 'RUNNING' || Number(sim.current_round) > maxR) {
+    if (sim.status === 'RUNNING' && Number(sim.current_round) >= maxR) {
+      sim.status = 'DEADLOCK';
+    }
+    return sim;
+  }
 
   const agents = sim.agents || [];
   if (agents.length === 0) return sim;
@@ -472,7 +478,10 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     moveOffer = customMove.offer_value !== undefined ? customMove.offer_value : activeAgent.current_offer;
     moveAction = customMove.action || 'COUNTER_OFFER';
   } else {
-    // Generate AI move
+    // Generate realistic AI moves with natural concession
+    const rNum = Number(sim.current_round || 1);
+    const progress = Math.min(1.0, (rNum - 1) / Math.max(1, maxR - 3));
+
     if (sim.scenario_id === 'project-budget') {
       const isEng = (activeAgent.id || '').includes('engineering') || (activeAgent.role || '').toLowerCase().includes('engineering');
       const isMkt = (activeAgent.id || '').includes('marketing') || (activeAgent.role || '').toLowerCase().includes('marketing');
@@ -483,7 +492,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       const prodVal = 300000 - (!isEng && !isMkt ? roundConcession : Math.round(roundConcession * 0.6));
       const totalDemanded = engVal + mktVal + prodVal;
 
-      if (sim.current_round >= 8 || totalDemanded <= 1000000) {
+      if (sim.current_round >= 6 || totalDemanded <= 1000000) {
         moveAction = 'ACCEPT';
         moveOffer = isEng ? 410000 : (isMkt ? 325000 : 265000);
         moveMessage = `We agree to finalize the balanced ₹1,000,000 tripartite allocation: Engineering ₹410,000, Marketing ₹325,000, Product AI ₹265,000.`;
@@ -497,9 +506,57 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           moveMessage = `Product AI proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Balancing GenAI model development and shared capacities.`;
         }
       }
+    } else if (sim.scenario_id === 'job-offer') {
+      const isCandidate = (activeAgent.role || '').toLowerCase().includes('candidate');
+      if (isCandidate) {
+        const candidateOffer = Math.round(175000 - progress * 10000);
+        const recruiterOffer = agents.find(a => a !== activeAgent)?.current_offer || 152000;
+        if (recruiterOffer >= candidateOffer || (rNum >= 5 && Math.abs(candidateOffer - recruiterOffer) <= 3000)) {
+          moveAction = 'ACCEPT';
+          moveOffer = recruiterOffer;
+          moveMessage = `Thank you for working through these terms. I am pleased to accept the agreed base salary of ₹${Number(moveOffer).toLocaleString()}.`;
+        } else {
+          moveOffer = candidateOffer;
+          moveMessage = `To help us align, I can adjust my compensation expectation to ₹${Number(moveOffer).toLocaleString()} base with full benefits.`;
+        }
+      } else {
+        const recruiterOffer = Math.round(152000 + progress * 12000);
+        const candidateOffer = agents.find(a => a !== activeAgent)?.current_offer || 175000;
+        if (recruiterOffer >= candidateOffer || (rNum >= 5 && Math.abs(candidateOffer - recruiterOffer) <= 3000)) {
+          moveAction = 'ACCEPT';
+          moveOffer = candidateOffer;
+          moveMessage = `We are pleased to extend and finalize an agreed compensation of ₹${Number(moveOffer).toLocaleString()} base salary. Welcome to the team!`;
+        } else {
+          moveOffer = recruiterOffer;
+          moveMessage = `We have secured executive approval to enhance our package to ₹${Number(moveOffer).toLocaleString()} base salary.`;
+        }
+      }
     } else {
-      moveOffer = activeAgent.current_offer;
-      moveMessage = `${activeAgent.role} presents counter-offer of ₹${Number(moveOffer).toLocaleString()}.`;
+      // Vendor Pricing Negotiation
+      const isBuyer = (activeAgent.role || '').toLowerCase().includes('buyer') || (activeAgent.role || '').toLowerCase().includes('procurement');
+      if (isBuyer) {
+        const buyerOffer = Math.round(95000 + progress * 4000);
+        const sellerOffer = agents.find(a => a !== activeAgent)?.current_offer || 110000;
+        if (sellerOffer <= buyerOffer || (rNum >= 5 && Math.abs(sellerOffer - buyerOffer) <= 2500)) {
+          moveAction = 'ACCEPT';
+          moveOffer = sellerOffer;
+          moveMessage = `We accept your proposed contract valuation of ₹${Number(moveOffer).toLocaleString()} with Net-60 payment terms.`;
+        } else {
+          moveOffer = buyerOffer;
+          moveMessage = `In the spirit of partnership, we adjust our purchasing offer to ₹${Number(moveOffer).toLocaleString()} under Net-60 terms.`;
+        }
+      } else {
+        const sellerOffer = Math.round(110000 - progress * 11000);
+        const buyerOffer = agents.find(a => a !== activeAgent)?.current_offer || 95000;
+        if (buyerOffer >= sellerOffer || (rNum >= 5 && Math.abs(sellerOffer - buyerOffer) <= 2500)) {
+          moveAction = 'ACCEPT';
+          moveOffer = buyerOffer;
+          moveMessage = `We are pleased to accept your proposed contract value of ₹${Number(moveOffer).toLocaleString()} with Net-60 terms and four-week delivery.`;
+        } else {
+          moveOffer = sellerOffer;
+          moveMessage = `To facilitate alignment, we can offer a concession down to ₹${Number(moveOffer).toLocaleString()} under standard commercial terms.`;
+        }
+      }
     }
   }
 
@@ -538,17 +595,31 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       timestamp_label: timeStr,
     });
   } else if (isRoundEnd) {
-    nextRound = sim.current_round + 1;
-    newMessages.push({
-      id: `msg_local_round_${Date.now()}`,
-      round_number: sim.current_round,
-      sender_type: 'ORCHESTRATOR',
-      sender_name: 'Orchestrator Agent',
-      sender_role: 'Orchestrator',
-      message: `Round ${sim.current_round} concluded. Advancing to Round ${nextRound}...`,
-      action: 'STATUS',
-      timestamp_label: timeStr,
-    });
+    if (sim.current_round >= maxR) {
+      status = 'DEADLOCK';
+      newMessages.push({
+        id: `msg_local_deadlock_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `Maximum round limit (${maxR}) reached without agreement. Negotiation concluded in Deadlock.`,
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+    } else {
+      nextRound = sim.current_round + 1;
+      newMessages.push({
+        id: `msg_local_round_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `Round ${sim.current_round} concluded. Advancing to Round ${nextRound}...`,
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+    }
   }
 
   const updatedSim = {
@@ -556,7 +627,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     current_round: nextRound,
     status,
     messages: newMessages,
-    agreement_likelihood: Math.min(95, 50 + nextRound * 4),
+    agreement_likelihood: status === 'COMPLETED' ? 100 : Math.min(95, 50 + nextRound * 4),
   };
 
   localSimulationsCache.set(simulationId, updatedSim);

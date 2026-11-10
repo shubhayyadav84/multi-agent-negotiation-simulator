@@ -533,9 +533,20 @@ class OrchestratorAgent {
       };
     }
 
+    const preset = this.getScenarioPreset(sim.scenario_id);
+    const effectiveMaxRounds = Number(sim.max_rounds || preset.max_rounds || 10);
+    if (Number(sim.current_round) > effectiveMaxRounds) {
+      await db.updateSimulation(simulationId, { status: 'DEADLOCK' });
+      const deadlockSim = await db.getSimulation(simulationId);
+      return {
+        simulation: deadlockSim,
+        advanced: false,
+        message: `Maximum round limit (${effectiveMaxRounds}) reached. Negotiation concluded in Deadlock.`,
+      };
+    }
+
     // 1. Determine active speaker, counterpart, and scenario preset
     const { activeAgent, counterpartAgent, isRoundEnd } = this.determineNextTurn(sim);
-    const preset = this.getScenarioPreset(sim.scenario_id);
     const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true;
     const simAgents = sim.agents || [];
     const humanCount = simAgents.filter(a => a.is_human === true || a.personality === 'Human').length;
@@ -981,15 +992,17 @@ if (action === 'REJECT') {
   };
 }
     // Condition C: Max Rounds Reached at End of Round
-if (isRoundEnd && currentRound >= maxRounds) {
-  return {
-    shouldStop: true,
-    finalStatus: 'DEADLOCK',
-    agreedValue: null,
-    deadlockReason: 'The maximum number of negotiation rounds was reached without an agreement.',
-    orchestratorMessage: `Maximum round limit (${maxRounds}) reached without agreement. Final gap remained ₹${currentGap.toLocaleString()}. Negotiation terminated in Deadlock.`,
-  };
-}
+    const numMaxRounds = Number(maxRounds || 10);
+    const numCurRound = Number(currentRound || 1);
+    if ((isRoundEnd && numCurRound >= numMaxRounds) || numCurRound > numMaxRounds) {
+      return {
+        shouldStop: true,
+        finalStatus: 'DEADLOCK',
+        agreedValue: null,
+        deadlockReason: 'The maximum number of negotiation rounds was reached without an agreement.',
+        orchestratorMessage: `Maximum round limit (${numMaxRounds}) reached without agreement. Final gap remained ₹${Number(currentGap || 0).toLocaleString()}. Negotiation terminated in Deadlock.`,
+      };
+    }
     // No stopping condition met -> continue negotiation
     return {
       shouldStop: false,

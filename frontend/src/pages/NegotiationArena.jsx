@@ -365,7 +365,20 @@ const NegotiationArena = () => {
       (m) => m.round_number === sim.current_round && (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN')
     );
     const activeIndex = currentRoundMessages.length % agents.length;
-    return agents[activeIndex];
+
+    // Safety guard: prevent the exact same agent from taking two consecutive turns
+    const allAgentMsgs = (sim.messages || []).filter(
+      (m) => m.sender_type === 'AGENT' || m.sender_type === 'HUMAN'
+    );
+    const lastMsg = allAgentMsgs[allAgentMsgs.length - 1];
+    let effectiveActiveIndex = activeIndex;
+    const isSameRole = Boolean(lastMsg?.sender_role && agents[activeIndex]?.role && lastMsg.sender_role === agents[activeIndex].role);
+    const isSameName = Boolean(lastMsg?.sender_name && agents[activeIndex]?.name && lastMsg.sender_name === agents[activeIndex].name);
+    if (lastMsg && agents.length > 1 && (isSameRole || isSameName)) {
+      effectiveActiveIndex = (activeIndex + 1) % agents.length;
+    }
+
+    return agents[effectiveActiveIndex];
   };
 
   const activeTurnAgent = getActiveTurnAgent(simulation);
@@ -488,6 +501,9 @@ const NegotiationArena = () => {
         offer_value: numericOffer,
         action: actionType,
         terms: customTerms,
+        sender_role: humanAgent?.role || activeTurnAgent?.role,
+        sender_name: humanAgent?.name || activeTurnAgent?.name || 'You',
+        is_human: true,
       });
       if (updated) {
         setSimulation(updated);

@@ -252,6 +252,18 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
       currency: '₹',
       agents: [
         {
+          id: 'hiring-director',
+          role: 'Recruiter',
+          name: 'Hiring Director & Talent Lead',
+          personality: 'Risk-Averse',
+          goal: 'Hire key engineering talent within departmental salary limits and equity allocation bands',
+          current_offer: 152000,
+          target_value: 152000,
+          reservation_value: 168000,
+          stance: 'Evaluating budget',
+          progress_percent: 50,
+        },
+        {
           id: 'job-candidate',
           role: 'Candidate',
           name: 'Senior AI Engineer Candidate',
@@ -263,21 +275,9 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
           stance: 'Seeking agreement',
           progress_percent: 50,
         },
-        {
-          id: 'hiring-director',
-          role: 'Recruiter',
-          name: 'Hiring Director & Talent Lead',
-          personality: 'Risk-Averse',
-          goal: 'Hire key engineering talent within departmental salary limits and equity allocation bands',
-          current_offer: 152000,
-          target_value: 152000,
-          reservation_value: 168000,
-          stance: 'Evaluating budget',
-          progress_percent: 45,
-        },
       ],
-      openingOffer: 175000,
-      openingMessage: 'Based on my track record and technical leadership, I am requesting a base compensation of ₹1,75,000 with 3 remote days per week.',
+      openingOffer: 152000,
+      openingMessage: 'We are pleased to extend an initial compensation proposal of ₹1,52,000 base salary with comprehensive enterprise benefits and standard equity vesting.',
     },
     'project-budget': {
       title: 'Project Budget Allocation',
@@ -322,7 +322,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
         },
       ],
       openingOffer: 450000,
-      openingMessage: 'Engineering requires ₹4,50,000 allocation for essential cloud infrastructure, database modernization, and platform uptime.',
+      openingMessage: 'Engineering proposes initial tripartite allocation: Engineering ₹4,50,000, Marketing ₹3,50,000, Product AI ₹3,00,000 (Total ₹11,00,000 against ₹10,00,000 ceiling). Cloud infrastructure and database uptime must remain protected.',
     },
   };
 
@@ -352,6 +352,23 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
     return baseAgent;
   });
 
+  const hasHuman = effectiveAgents.some((a) => a.is_human === true || a.personality === 'Human');
+  if (hasHuman) {
+    if (scenarioId === 'vendor-pricing') {
+      const seller = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
+      const buyer = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
+      if (seller && buyer) effectiveAgents = [seller, buyer];
+    } else if (scenarioId === 'job-offer') {
+      const recruiter = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
+      const candidate = effectiveAgents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
+      if (recruiter && candidate) effectiveAgents = [recruiter, candidate];
+    } else if (scenarioId === 'project-budget') {
+      const aiAgents = effectiveAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
+      const humanAgents = effectiveAgents.filter((a) => a.personality === 'Human' || a.is_human === true);
+      if (aiAgents.length > 0 && humanAgents.length > 0) effectiveAgents = [...aiAgents, ...humanAgents];
+    }
+  }
+
   const firstAgent = effectiveAgents[0];
   const secondAgent = effectiveAgents[1] || effectiveAgents[0];
   const initialGap = Math.abs((firstAgent.current_offer || 0) - (secondAgent.current_offer || 0));
@@ -376,6 +393,19 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
   const initialOffers = [];
 
   if (!isFirstHuman) {
+    let openingMsg = config.openingMessage;
+    let openingVal = config.openingOffer;
+    if (firstAgent.id === 'vendor-sales') {
+      openingVal = 110000;
+      openingMsg = 'We are pleased to present our initial enterprise quotation of ₹110,000 with Net-30 payment terms and 99.9% uptime SLA.';
+    } else if (firstAgent.id === 'hiring-director') {
+      openingVal = 152000;
+      openingMsg = 'We are pleased to extend an initial compensation proposal of ₹1,52,000 base salary with comprehensive enterprise benefits and standard equity vesting.';
+    } else if (firstAgent.id === 'vp-engineering') {
+      openingVal = 450000;
+      openingMsg = 'Engineering proposes initial tripartite allocation: Engineering ₹4,50,000, Marketing ₹3,50,000, Product AI ₹3,00,000 (Total ₹11,00,000 against ₹10,00,000 ceiling). Cloud infrastructure and database uptime must remain protected.';
+    }
+
     initialMessages.push({
       id: `msg_init_${Date.now()}_1`,
       round_number: 1,
@@ -383,14 +413,14 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
       sender_name: firstAgent.name,
       sender_role: firstAgent.role,
       personality: firstAgent.personality,
-      message: config.openingMessage,
-      offer_value: config.openingOffer,
+      message: openingMsg,
+      offer_value: openingVal,
       timestamp_label: timeStr,
     });
     initialOffers.push({
       round_number: 1,
       agent_role: firstAgent.role,
-      offer_value: config.openingOffer,
+      offer_value: openingVal,
     });
   }
 
@@ -459,7 +489,17 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     activeAgent = agents[(activeIndex + 1) % agents.length];
   }
 
-  const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true;
+  // If a custom move is submitted (human action), lock activeAgent to the human participant
+  if (customMove) {
+    const humanAg = agents.find(
+      (a) => a.personality === 'Human' || a.is_human === true || (customMove.sender_role && a.role === customMove.sender_role)
+    );
+    if (humanAg) {
+      activeAgent = humanAg;
+    }
+  }
+
+  const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true || Boolean(customMove);
   const isRoundEnd = (currentRoundMessages.length + 1) % agents.length === 0;
 
   if (isHumanTurn && !customMove) {

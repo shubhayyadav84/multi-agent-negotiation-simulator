@@ -546,12 +546,23 @@ class OrchestratorAgent {
     }
 
     // 1. Determine active speaker, counterpart, and scenario preset
-    const { activeAgent, counterpartAgent, isRoundEnd } = this.determineNextTurn(sim);
-    const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true;
+    let { activeAgent, counterpartAgent, isRoundEnd } = this.determineNextTurn(sim);
     const simAgents = sim.agents || [];
     const humanCount = simAgents.filter(a => a.is_human === true || a.personality === 'Human').length;
     const isPractice = (sim.id && sim.id.startsWith('practice_')) ||
       (humanCount > 0 && humanCount < simAgents.length);
+
+    // In Practice Mode (where exactly one human participant exists), ensure human moves are locked to the human participant
+    if (customMove && isPractice) {
+      const humanAg = simAgents.find(
+        (a) => (customMove.sender_role && a.role === customMove.sender_role) || a.is_human === true || a.personality === 'Human'
+      );
+      if (humanAg) {
+        activeAgent = humanAg;
+      }
+    }
+
+    const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true || Boolean(customMove);
 
     // Guard: if it's a human turn and no move was provided by human, do NOT generate an automated AI response!
     if (isHumanTurn && !customMove) {

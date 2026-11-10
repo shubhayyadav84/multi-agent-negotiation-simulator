@@ -134,52 +134,52 @@ const PRACTICE_ROLES_DATA = {
         id: 'vp-engineering',
         name: 'Lead Software Engineer',
         title: 'VP of Engineering',
-        stakeholder: 'Engineering & Infrastructure',
-        avatarText: 'LE',
+        stakeholder: 'Core Engineering Department',
+        avatarText: 'ENG',
         roleDescription:
           'Defends core technical infrastructure, cloud compute scaling, database modernization, and critical engineering tech debt resolution.',
         primaryGoal:
-          'Secure core infrastructure and compute capital (target ₹45,00,000) to ensure platform reliability and zero downtime.',
+          'Secure core infrastructure budget (target ₹4,50,000) for platform reliability and uptime.',
         constraints: [
-          'Must receive minimum operational tech budget of ₹35,00,000.',
+          'Must receive minimum operational funding of ₹2,50,000.',
           'Must secure at least 700 shared team engineering hours.',
-          'Must not compromise cloud reliability or security audit standards.',
+          'Must not request funding above own project estimate (max ₹6,00,000).',
         ],
         defaultPersonality: PERSONALITIES.RISK_AVERSE,
-      },
-      {
-        id: 'head-product-ai',
-        name: 'Product Manager',
-        title: 'Head of Product & AI',
-        stakeholder: 'Product & User Experience',
-        avatarText: 'PM',
-        roleDescription:
-          'Champions product feature roadmap, customer-facing GenAI capabilities, UX enhancements, and user growth initiatives.',
-        primaryGoal:
-          'Secure feature development and GenAI product launch capital (target ₹35,00,000) to hit key H2 delivery milestones.',
-        constraints: [
-          'Must receive minimum operational product funding of ₹25,00,000.',
-          'Must secure dedicated shared design and QA capacity (min 600 hours).',
-          'Must protect the Q3 customer product launch timeline.',
-        ],
-        defaultPersonality: PERSONALITIES.COLLABORATIVE,
       },
       {
         id: 'cmo-marketing',
         name: 'Marketing Director',
         title: 'Chief Marketing Officer',
-        stakeholder: 'Marketing & Global Growth',
-        avatarText: 'MD',
+        stakeholder: 'Growth & Marketing Department',
+        avatarText: 'MKT',
         roleDescription:
           'Fights for global brand awareness, paid digital customer acquisition, event sponsorships, and lead-generation campaigns.',
         primaryGoal:
-          'Secure customer acquisition, paid campaign, and marketing capital (target ₹25,00,000) to fuel annual revenue targets.',
+          'Secure customer acquisition and growth capital (target ₹3,50,000) to meet targets.',
         constraints: [
-          'Must receive minimum campaign funding of ₹15,00,000 for upcoming product release.',
-          'Must secure shared creative team capacity for go-to-market assets.',
-          'Must not delay key conference sponsorship bookings.',
+          'Must receive minimum campaign funding of ₹2,00,000.',
+          'Must secure at least 600 shared team hours.',
+          'Must not request funding above own project estimate (max ₹5,50,000).',
         ],
         defaultPersonality: PERSONALITIES.AGGRESSIVE,
+      },
+      {
+        id: 'head-product-ai',
+        name: 'Product Manager',
+        title: 'Head of Product AI',
+        stakeholder: 'Product & AI Innovation Department',
+        avatarText: 'AI',
+        roleDescription:
+          'Champions product feature roadmap, customer-facing GenAI capabilities, UX enhancements, and user growth initiatives.',
+        primaryGoal:
+          'Secure feature development and GenAI product launch capital (target ₹3,00,000).',
+        constraints: [
+          'Must receive minimum operational product funding of ₹2,00,000.',
+          'Must secure at least 500 shared design and QA hours.',
+          'Must not request funding above own project estimate (max ₹4,00,000).',
+        ],
+        defaultPersonality: PERSONALITIES.COLLABORATIVE,
       },
     ],
   },
@@ -317,6 +317,26 @@ const PracticeAgentConfig = () => {
       scenario: scenarioData,
       mode: 'practice',
       isPractice: true,
+      agents: [
+        {
+          id: userRole.id,
+          name: userRole.name,
+          role: userRole.title || userRole.role || userRole.name,
+          personality: 'Human',
+          goal: userRole.primaryGoal,
+          constraints: userRole.constraints,
+          is_human: true,
+        },
+        ...aiCounterparts.map((ai) => ({
+          id: ai.id,
+          name: ai.name,
+          role: ai.title || ai.role || ai.name,
+          personality: aiPersonalities[ai.id] || ai.defaultPersonality,
+          goal: ai.primaryGoal,
+          constraints: ai.constraints,
+          is_human: false,
+        })),
+      ],
       userRole: {
         id: userRole.id,
         name: userRole.name,

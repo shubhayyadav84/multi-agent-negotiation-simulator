@@ -118,6 +118,16 @@ class NegotiationTurnResponse(BaseModel):
 # API Endpoints
 # ============================================================================
 
+@app.get("/")
+def root():
+    return {
+        "status": "ONLINE",
+        "service": "Multi-Agent Negotiation AI Service (FastAPI)",
+        "version": "1.0.0",
+        "docs_url": "/docs",
+        "health_check": "/health"
+    }
+
 @app.get("/health")
 def health_check():
     return {

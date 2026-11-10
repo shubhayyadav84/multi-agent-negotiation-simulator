@@ -1385,30 +1385,341 @@
    Responsive Adaptations
    ========================================================================== */
 @media (max-width: 1024px) {
-  .arena-main-grid {
-    grid-template-columns: 1fr;
+  .page-container.arena-page-container {
+    height: auto !important;
+    min-height: calc(100vh - var(--header-height, 72px)) !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    overflow-x: hidden !important;
+    padding-bottom: 40px !important;
   }
-  
+
+  .arena-page-wrapper {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    min-height: auto !important;
+  }
+
+  .arena-main-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 16px !important;
+  }
+
   .arena-transcript-card {
-    height: 540px;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .arena-transcript-body {
+    height: 420px !important;
+    max-height: 480px !important;
+    min-height: 280px !important;
+    overflow-y: auto !important;
+  }
+
+  .arena-sidebar-col {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
   }
 }
 
 @media (max-width: 768px) {
+  .page-container.arena-page-container {
+    padding: 10px 8px 36px !important;
+  }
+
   .arena-control-bar {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 10px 10px !important;
+    gap: 8px !important;
   }
-  
+
   .arena-actions-group {
-    justify-content: stretch;
+    width: 100% !important;
+    display: flex !important;
+    gap: 6px !important;
+    justify-content: stretch !important;
   }
-  
+
   .btn-arena-pause,
   .btn-arena-end,
   .btn-arena-restart {
-    flex: 1;
-    justify-content: center;
+    flex: 1 !important;
+    padding: 8px 6px !important;
+    font-size: 0.74rem !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+  }
+
+  /* Unlocked Transcript Card on Mobile */
+  .arena-transcript-card {
+    border-radius: 14px !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .arena-transcript-header {
+    padding: 12px 14px !important;
+  }
+
+  .arena-transcript-body {
+    height: 360px !important;
+    max-height: 420px !important;
+    min-height: 240px !important;
+    overflow-y: auto !important;
+    padding: 12px 8px !important;
+  }
+
+  /* Chat Rows & One-Box Message Bubbles on Mobile */
+  .arena-chat-row {
+    width: 100% !important;
+    gap: 8px !important;
+    align-items: flex-start !important;
+    box-sizing: border-box !important;
+    margin: 8px 0 !important;
+  }
+
+  .arena-avatar-container,
+  .arena-avatar-container .agent-face-avatar-wrap {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .arena-bubble-wrapper {
+    max-width: calc(100% - 42px) !important;
+    width: auto !important;
+    flex: 1 !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .arena-bubble-meta {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 4px 6px !important;
+    width: 100% !important;
+    margin-bottom: 4px !important;
+    font-size: 0.72rem !important;
+    line-height: 1.3 !important;
+  }
+
+  .arena-bubble-wrapper.seller .arena-bubble-meta {
+    justify-content: flex-end !important;
+  }
+
+  .arena-bubble-wrapper.buyer .arena-bubble-meta {
+    justify-content: flex-start !important;
+  }
+
+  .arena-bubble-meta .arena-agent-name {
+    white-space: normal !important;
+    word-break: normal !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+  }
+
+  /* Message in ONE unified full-width box with offer attached neatly underneath */
+  .arena-bubble-content-row {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 4px !important;
+    box-sizing: border-box !important;
+  }
+
+  .arena-chat-row.buyer-row .arena-bubble-content-row {
+    align-items: flex-start !important;
+  }
+
+  .arena-chat-row.seller-row .arena-bubble-content-row {
+    align-items: flex-end !important;
+  }
+
+  .arena-speech-bubble {
+    order: 1 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 10px 14px !important;
+    font-size: 0.88rem !important;
+    line-height: 1.45 !important;
+    word-break: break-word !important;
+    border-radius: 14px !important;
+  }
+
+  .arena-speech-bubble.buyer-bubble {
+    border-bottom-left-radius: 4px !important;
+  }
+
+  .arena-speech-bubble.seller-bubble {
+    border-bottom-right-radius: 4px !important;
+  }
+
+  .arena-bubble-text {
+    margin: 0 !important;
+    font-size: 0.88rem !important;
+    line-height: 1.45 !important;
+    word-break: break-word !important;
+  }
+
+  .arena-attached-offer {
+    order: 2 !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    padding: 3px 10px !important;
+    border-radius: 8px !important;
+    margin-top: 2px !important;
+  }
+
+  .arena-chat-row.buyer-row .arena-attached-offer {
+    align-self: flex-start !important;
+  }
+
+  .arena-chat-row.seller-row .arena-attached-offer {
+    align-self: flex-end !important;
+  }
+
+  /* Orchestrator Box on Mobile */
+  .arena-orchestrator-box {
+    padding: 8px 12px !important;
+    gap: 8px !important;
+    font-size: 0.82rem !important;
+  }
+
+  .arena-orchestrator-header {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+
+  /* Practice Mode Human Input Dock on Mobile */
+  .arena-human-dock {
+    padding: 10px 12px 14px !important;
+    gap: 8px !important;
+    border-radius: 0 0 14px 14px !important;
+  }
+
+  .arena-human-dock-header {
+    gap: 6px !important;
+  }
+
+  .arena-dock-header-left,
+  .arena-dock-header-right {
+    gap: 6px !important;
+    width: 100% !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+  }
+
+  .arena-dock-badge {
+    padding: 3px 8px !important;
+    font-size: 0.74rem !important;
+  }
+
+  .arena-dock-role-tag {
+    font-size: 0.74rem !important;
+  }
+
+  .arena-opponent-stance-pill {
+    font-size: 0.74rem !important;
+    gap: 4px !important;
+  }
+
+  .arena-dock-single-textarea {
+    font-size: 0.86rem !important;
+    padding: 8px 10px !important;
+    min-height: 52px !important;
+  }
+
+  .arena-dock-quick-chips {
+    gap: 4px !important;
+    margin-top: 4px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .arena-quick-chip {
+    padding: 3px 8px !important;
+    font-size: 0.72rem !important;
+  }
+
+  .arena-dock-actions-bar {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    justify-content: space-between !important;
+  }
+
+  .arena-dock-voice-hint {
+    font-size: 0.72rem !important;
+  }
+
+  .btn-arena-send-message {
+    width: auto !important;
+    padding: 8px 16px !important;
+    font-size: 0.82rem !important;
+  }
+
+  /* Sidebar Cards on Mobile: Free scrolling to see whole agent status */
+  .arena-sidebar-col {
+    gap: 12px !important;
+  }
+
+  .arena-side-card {
+    border-radius: 14px !important;
+    padding: 14px !important;
+  }
+
+  .arena-coach-card {
+    border-radius: 14px !important;
+    padding: 14px !important;
+  }
+
+  .arena-agent-item-card {
+    padding: 12px !important;
+  }
+
+  .arena-agent-item-top {
+    gap: 10px !important;
+  }
+
+  .arena-agent-avatar-small,
+  .arena-agent-avatar-small .agent-face-avatar-wrap {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+
+  .arena-agent-main-role {
+    font-size: 0.84rem !important;
+  }
+
+  .arena-agent-goal-text {
+    font-size: 0.76rem !important;
+  }
+
+  .arena-agent-offer-stance-row {
+    margin-top: 8px !important;
+  }
+
+  .arena-stat-value {
+    font-size: 1.05rem !important;
   }
 }
 
@@ -3515,30 +3826,11 @@
   }
 
   .arena-transcript-card {
-    height: 480px;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     border-radius: 14px;
-    padding: 14px 10px;
-  }
-
-  .arena-message-item {
-    gap: 8px;
-  }
-
-  .arena-message-bubble {
-    padding: 10px 12px;
-    font-size: 0.84rem;
-    max-width: 90%;
-  }
-
-  .arena-dock-actions-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-
-  .btn-arena-send-message {
-    width: 100%;
-    justify-content: center;
+    padding: 0 !important;
   }
 
   .arena-dock-detected-pill {

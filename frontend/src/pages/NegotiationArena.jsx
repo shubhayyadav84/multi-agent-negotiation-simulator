@@ -767,7 +767,7 @@ const NegotiationArena = () => {
     }
   };
 
-  // End simulation: clear active session, do NOT show report in arena, redirect directly to Scenario Selection
+  // End simulation: clear active session, do NOT show report in arena, redirect directly to Dashboard
   const handleEndSimulation = async () => {
     sessionStorage.removeItem('active_arena_sim_id');
     allowExitRef.current = true;
@@ -781,7 +781,7 @@ const NegotiationArena = () => {
         console.warn('Failed to end simulation cleanly:', err);
       }
     }
-    navigate('/scenarios');
+    navigate('/dashboard');
   };
 
   // Direct navigation to negotiation report (includes ?from=arena so report page has a "Back to Negotiation Arena" button)
@@ -1061,7 +1061,7 @@ const NegotiationArena = () => {
       {showExitWarning && (
         <div className="arena-exit-toast">
           <AlertCircle size={18} />
-          <span>Active negotiation in progress. Click <strong>End Simulation</strong> to exit to Scenario Selection.</span>
+          <span>Active negotiation in progress. Click <strong>End Simulation</strong> to exit to Dashboard.</span>
         </div>
       )}
 
@@ -1200,7 +1200,7 @@ const NegotiationArena = () => {
             type="button"
             className="btn-arena-end"
             onClick={handleEndSimulation}
-            title="End simulation and return to Scenario Selection"
+            title="End simulation and return to Dashboard"
           >
             <Square size={14} />
             <span>End Simulation</span>
@@ -1688,6 +1688,104 @@ const NegotiationArena = () => {
 
         {/* RIGHT COLUMN: Agent Status & Negotiation Metrics */}
         <div className="arena-sidebar-col">
+          {/* Agent Status Card */}
+          <div className="arena-side-card">
+            <div className="arena-side-card-header">
+              <Users size={17} className="arena-card-header-icon" />
+              <h2 className="arena-card-title">Agent Status</h2>
+            </div>
+
+            <div className="arena-agents-list">
+              {activeAgentsList.map((agent, idx) => {
+                const isFirst = idx === 0;
+                const rolePillClass = (agent.personality || '').toLowerCase().includes('aggressive')
+                  ? 'aggressive'
+                  : (agent.personality || '').toLowerCase().includes('risk')
+                  ? 'risk-averse'
+                  : 'collaborative';
+                const offerVal = agent.current_offer || (isFirst ? 9000 : 10000);
+                const stanceVal = agent.stance || (isFirst ? 'Seeking agreement' : 'Holding firm');
+                const progressVal = agent.progress_percent || (isFirst ? 70 : 60);
+
+                return (
+                  <div key={agent.id || `agent-item-${idx}`} className="arena-agent-item-card">
+                    <div className="arena-agent-item-top">
+                      <div className="arena-agent-avatar-small">
+                        <AgentFaceAvatar
+                          agentId={agent.id}
+                          personality={agent.personality}
+                          role={agent.role}
+                          size={42}
+                        />
+                      </div>
+                      <div className="arena-agent-item-id">
+                        <div className="arena-agent-item-name-row">
+                          <span className="arena-agent-main-role">{getFormattedAgentTitle(agent, 'agent-status')}</span>
+                          {(() => {
+                            const isHumanParticipant = Boolean(
+                              agent.personality === 'Human' ||
+                              agent.is_human === true ||
+                              (isPracticeMode && (
+                                agent.id === location.state?.userRoleAgentId ||
+                                (humanAgent && (agent.id === humanAgent.id || agent.role === humanAgent.role))
+                              ))
+                            );
+                            return (
+                              <span className={`arena-role-pill ${isHumanParticipant ? 'human' : rolePillClass}`}>
+                                {isHumanParticipant ? 'You' : (agent.personality || (isFirst ? 'Collaborative' : 'Aggressive'))}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                        <span className="arena-agent-active-badge">Active</span>
+                      </div>
+                    </div>
+
+                    <p className="arena-agent-goal-text">
+                      Goal: {agent.goal || (isFirst ? 'Get best price with good terms' : 'Maximize profit with stable demand')}
+                    </p>
+
+                    <div className="arena-agent-offer-stance-row">
+                      <div className="arena-agent-stat-col">
+                        <span className="arena-stat-label">CURRENT OFFER</span>
+                        <span className={`arena-stat-value ${isFirst ? 'buyer-val' : 'seller-val'}`}>
+                          ₹{Number(offerVal).toLocaleString()}
+                          {currentScenarioId === 'vendor-pricing' && (
+                            <span className="arena-stat-unit"> per unit</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="arena-agent-stat-col align-right">
+                        <span className="arena-stat-label">{isPracticeMode ? 'LIVE STANCE' : 'Stance'}</span>
+                        <span
+                          className={`arena-live-stance-pill stance-${getDynamicStanceCategory(agent, simulation, isFirst).toLowerCase()}`}
+                          title={`Live Stance: ${getDynamicStanceCategory(agent, simulation, isFirst)}`}
+                        >
+                          <span className="stance-dot" />
+                          {getDynamicStanceCategory(agent, simulation, isFirst)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="arena-agent-progress-row">
+                      <div className="arena-agent-progress-track">
+                        <div
+                          className={`arena-agent-progress-bar ${isFirst ? 'buyer-progress' : 'seller-progress'}`}
+                          style={{ width: `${progressVal}%` }}
+                        />
+                      </div>
+                      {!isPracticeMode && (
+                        <span className="arena-progress-percent-label">
+                          {progressVal}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Numbers and Offer Guide Card (Practice Mode) */}
           {isPracticeMode && (
           <div className="arena-coach-card arena-number-guide-card">
@@ -1812,104 +1910,6 @@ const NegotiationArena = () => {
             )}
           </div>
           )}
-
-          {/* Agent Status Card */}
-          <div className="arena-side-card">
-            <div className="arena-side-card-header">
-              <Users size={17} className="arena-card-header-icon" />
-              <h2 className="arena-card-title">Agent Status</h2>
-            </div>
-
-            <div className="arena-agents-list">
-              {activeAgentsList.map((agent, idx) => {
-                const isFirst = idx === 0;
-                const rolePillClass = (agent.personality || '').toLowerCase().includes('aggressive')
-                  ? 'aggressive'
-                  : (agent.personality || '').toLowerCase().includes('risk')
-                  ? 'risk-averse'
-                  : 'collaborative';
-                const offerVal = agent.current_offer || (isFirst ? 9000 : 10000);
-                const stanceVal = agent.stance || (isFirst ? 'Seeking agreement' : 'Holding firm');
-                const progressVal = agent.progress_percent || (isFirst ? 70 : 60);
-
-                return (
-                  <div key={agent.id || `agent-item-${idx}`} className="arena-agent-item-card">
-                    <div className="arena-agent-item-top">
-                      <div className="arena-agent-avatar-small">
-                        <AgentFaceAvatar
-                          agentId={agent.id}
-                          personality={agent.personality}
-                          role={agent.role}
-                          size={42}
-                        />
-                      </div>
-                      <div className="arena-agent-item-id">
-                        <div className="arena-agent-item-name-row">
-                          <span className="arena-agent-main-role">{getFormattedAgentTitle(agent, 'agent-status')}</span>
-                          {(() => {
-                            const isHumanParticipant = Boolean(
-                              agent.personality === 'Human' ||
-                              agent.is_human === true ||
-                              (isPracticeMode && (
-                                agent.id === location.state?.userRoleAgentId ||
-                                (humanAgent && (agent.id === humanAgent.id || agent.role === humanAgent.role))
-                              ))
-                            );
-                            return (
-                              <span className={`arena-role-pill ${isHumanParticipant ? 'human' : rolePillClass}`}>
-                                {isHumanParticipant ? 'You' : (agent.personality || (isFirst ? 'Collaborative' : 'Aggressive'))}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                        <span className="arena-agent-active-badge">Active</span>
-                      </div>
-                    </div>
-
-                    <p className="arena-agent-goal-text">
-                      Goal: {agent.goal || (isFirst ? 'Get best price with good terms' : 'Maximize profit with stable demand')}
-                    </p>
-
-                    <div className="arena-agent-offer-stance-row">
-                      <div className="arena-agent-stat-col">
-                        <span className="arena-stat-label">CURRENT OFFER</span>
-                        <span className={`arena-stat-value ${isFirst ? 'buyer-val' : 'seller-val'}`}>
-                          ₹{Number(offerVal).toLocaleString()}
-                          {currentScenarioId === 'vendor-pricing' && (
-                            <span className="arena-stat-unit"> per unit</span>
-                          )}
-                        </span>
-                      </div>
-                      <div className="arena-agent-stat-col align-right">
-                        <span className="arena-stat-label">{isPracticeMode ? 'LIVE STANCE' : 'Stance'}</span>
-                        <span
-                          className={`arena-live-stance-pill stance-${getDynamicStanceCategory(agent, simulation, isFirst).toLowerCase()}`}
-                          title={`Live Stance: ${getDynamicStanceCategory(agent, simulation, isFirst)}`}
-                        >
-                          <span className="stance-dot" />
-                          {getDynamicStanceCategory(agent, simulation, isFirst)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="arena-agent-progress-row">
-                      <div className="arena-agent-progress-track">
-                        <div
-                          className={`arena-agent-progress-bar ${isFirst ? 'buyer-progress' : 'seller-progress'}`}
-                          style={{ width: `${progressVal}%` }}
-                        />
-                      </div>
-                      {!isPracticeMode && (
-                        <span className="arena-progress-percent-label">
-                          {progressVal}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
 
           {/* Negotiation Metrics Card */}
           <div className="arena-side-card">

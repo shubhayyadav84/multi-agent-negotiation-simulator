@@ -49,8 +49,32 @@ export async function startSimulation(scenarioId = 'vendor-pricing', customAgent
 
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
     }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenarioId, customAgents, maxRounds, userEmail, userId }),
+        });
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to error handling
+      }
+    }
+
     throw new Error(`Server returned ${res.status}`);
   } catch (err) {
     console.warn('[Simulation API] Backend unavailable or timed out, initializing clean scenario session at Round 1:', err.message);
@@ -92,7 +116,26 @@ export async function getSimulationState(simulationId) {
     });
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
+    }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}`);
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to local fallback
+      }
     }
   } catch (err) {
     console.warn('[Simulation API] Failed to fetch state:', err.message);
@@ -114,7 +157,28 @@ export async function stepSimulation(simulationId, customMove = null) {
 
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
+    }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/resume`, {
+          method: 'POST',
+        });
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to local fallback
+      }
     }
   } catch (err) {
     console.warn('[Simulation API] Step failed on backend, executing local step:', err.message);
@@ -133,7 +197,28 @@ export async function pauseSimulation(simulationId) {
     });
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
+    }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/resume`, {
+          method: 'POST',
+        });
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to local fallback
+      }
     }
   } catch (err) {
     console.warn('[Simulation API] Pause error:', err.message);
@@ -155,7 +240,28 @@ export async function resumeSimulation(simulationId) {
     });
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
+    }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/resume`, {
+          method: 'POST',
+        });
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to local fallback
+      }
     }
   } catch (err) {
     console.warn('[Simulation API] Resume error:', err.message);
@@ -178,7 +284,28 @@ export async function endSimulation(simulationId, reason = 'Left in between') {
     });
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
+    }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/resume`, {
+          method: 'POST',
+        });
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to local fallback
+      }
     }
   } catch (err) {
     console.warn('[Simulation API] End error:', err.message);
@@ -200,7 +327,28 @@ export async function restartSimulation(simulationId) {
     });
     if (res.ok) {
       const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
       return json.data;
+    }
+
+    // Auto-retry once unauthenticated if token issue occurred
+    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+      try {
+        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/restart`, {
+          method: 'POST',
+        });
+        if (retryRes.ok) {
+          const json = await retryRes.json();
+          if (json.data && json.data.id) {
+            localSimulationsCache.set(json.data.id, json.data);
+          }
+          return json.data;
+        }
+      } catch {
+        // fall through to local fallback
+      }
     }
   } catch (err) {
     console.warn('[Simulation API] Restart error:', err.message);
@@ -441,23 +589,15 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
 function advanceLocalSimulation(simulationId, customMove = null) {
   let sim = localSimulationsCache.get(simulationId);
   if (!sim) {
-    sim = {
-      id: simulationId,
-      scenario_id: 'project-budget',
-      scenario_title: 'Project Budget Allocation',
-      status: 'RUNNING',
-      current_round: 1,
-      max_rounds: 12,
-      current_gap: 0,
-      agreement_likelihood: 50,
-      agents: [
-        { id: 'vp-engineering', role: 'Engineering Lead', name: 'VP of Engineering', personality: 'Risk-Averse', current_offer: 450000 },
-        { id: 'cmo-marketing', role: 'Marketing Lead', name: 'Chief Marketing Officer', personality: 'Aggressive', current_offer: 350000 },
-        { id: 'head-product-ai', role: 'Product AI Lead', name: 'Head of Product AI', personality: 'Collaborative', current_offer: 300000 },
-      ],
-      messages: [],
-      offers: [],
-    };
+    let inferScenario = 'vendor-pricing';
+    const sId = (simulationId || '').toLowerCase();
+    if (sId.includes('job') || sId.includes('candidate') || sId.includes('recruiter') || sId.includes('salary')) {
+      inferScenario = 'job-offer';
+    } else if (sId.includes('budget') || sId.includes('project') || sId.includes('allocation')) {
+      inferScenario = 'project-budget';
+    }
+    sim = createLocalSimulation(inferScenario);
+    sim.id = simulationId;
     localSimulationsCache.set(simulationId, sim);
   }
 

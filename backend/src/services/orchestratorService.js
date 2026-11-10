@@ -738,6 +738,8 @@ const fixedOffer =
     const agents = updatedSim.agents || [];
 
     // Calculate current gap between primary stakeholders
+    const agent0Offer = Number(agents[0]?.current_offer || 0);
+    const agent1Offer = Number(agents[1]?.current_offer || 0);
     let currentGap = sim.current_gap;
     if (sim.scenario_id === 'job-offer') {
       const recruiter = agents.find((a) => {
@@ -769,8 +771,6 @@ const fixedOffer =
       const totalDemanded = agents.reduce((sum, a) => sum + Number(a.current_offer || 0), 0);
       currentGap = totalDemanded <= 1000000 ? 0 : (totalDemanded - 1000000);
     } else {
-      const agent0Offer = Number(agents[0]?.current_offer || 0);
-      const agent1Offer = Number(agents[1]?.current_offer || 0);
       currentGap = Math.abs(agent0Offer - agent1Offer);
     }
 

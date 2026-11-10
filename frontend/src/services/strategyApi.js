@@ -114,18 +114,42 @@ export async function toggleBookmarkApi(strategyId, isBookmarked, userId, userEm
 }
 
 export async function askGeminiTutor({ message, strategyId, conversationId, userId, userEmail }) {
-  const authHeaders = await getAuthHeaders();
-  const res = await fetch(`${BACKEND_URL}/api/strategy-library/chat`, {
+  let authHeaders = {};
+  try {
+    authHeaders = await getAuthHeaders();
+  } catch {
+    // continue without auth token
+  }
+
+  const payload = JSON.stringify({
+    message,
+    strategyId,
+    conversationId,
+    userId: userId || 'guest',
+    userEmail
+  });
+
+  let res = await fetch(`${BACKEND_URL}/api/strategy-library/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
-    body: JSON.stringify({
-      message,
-      strategyId,
-      conversationId,
-      userId: userId || 'guest',
-      userEmail
-    })
+    body: payload
   });
+
+  // If rejected due to auth token issue, retry once without auth header
+  if (!res.ok && (res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
+    try {
+      const retryRes = await fetch(`${BACKEND_URL}/api/strategy-library/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload
+      });
+      if (retryRes.ok) {
+        res = retryRes;
+      }
+    } catch {
+      // ignore retry failure and throw standard error below
+    }
+  }
 
   if (!res.ok) {
     const errText = await res.text();

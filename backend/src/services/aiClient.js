@@ -155,6 +155,9 @@ function generateDeterministicAgentMove({
         engineeringFunding: engFinal,
         marketingFunding: mktFinal,
         productAIFunding: prodFinal,
+        engineering: engFinal,
+        marketing: mktFinal,
+        product: prodFinal,
         total: 1000000,
       };
       message = pickRandom([
@@ -164,51 +167,63 @@ function generateDeterministicAgentMove({
     } else if (roundNumber === 1) {
       stance = `${agent.personality} opening request`;
       action = 'OFFER';
+      terms = {
+        engineeringFunding: engReq,
+        marketingFunding: mktReq,
+        productAIFunding: prodReq,
+        engineering: engReq,
+        marketing: mktReq,
+        product: prodReq,
+        totalDemanded,
+      };
       if (isEng) {
         proposedOffer = engReq;
-        terms = { engineeringFunding: engReq, totalDemanded };
         message = pickRandom([
-          `Engineering requests ${currency}${engReq.toLocaleString()} for database scaling, security hardening, and 99.99% uptime reliability. With division requests totaling ${currency}${totalDemanded.toLocaleString()} against our ${currency}1,000,000 ceiling, we must safeguard core platform infrastructure.`,
-          `Our technical roadmap requires ${currency}${engReq.toLocaleString()} capital for cloud infrastructure modernization. We need to prioritize core systems before secondary initiatives.`
+          `Engineering proposes tripartite allocation: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} (Total ${currency}${totalDemanded.toLocaleString()}). Core cloud infrastructure and platform reliability are our priority.`,
+          `Our technical roadmap requires ${currency}${engReq.toLocaleString()} capital. We propose: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} against our ${currency}1,000,000 ceiling.`
         ]);
       } else if (isMkt) {
         proposedOffer = mktReq;
-        terms = { marketingFunding: mktReq, totalDemanded };
         message = pickRandom([
-          `Marketing requests ${currency}${mktReq.toLocaleString()} for global customer acquisition campaigns, brand partnerships, and event sponsorships. Strong growth is essential to achieve enterprise ROI.`,
-          `To drive necessary pipeline and revenue targets, Marketing requires ${currency}${mktReq.toLocaleString()} in dedicated campaign funding.`
+          `Marketing proposes tripartite allocation: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} (Total ${currency}${totalDemanded.toLocaleString()}). Securing high-converting acquisition campaigns is vital for revenue.`,
+          `To drive necessary pipeline, Marketing proposes: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`
         ]);
       } else {
         proposedOffer = prodReq;
-        terms = { productAIFunding: prodReq, totalDemanded };
         message = pickRandom([
-          `Product AI requests ${currency}${prodReq.toLocaleString()} for generative AI feature engineering and core UX enhancements. All three divisions must negotiate disciplined trade-offs to stay within our ${currency}1,000,000 limit.`,
-          `Delivering our customer-facing GenAI roadmap requires ${currency}${prodReq.toLocaleString()} funding. We propose reviewing shared dependencies to balance the budget.`
+          `Product AI proposes tripartite allocation: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} (Total ${currency}${totalDemanded.toLocaleString()}). GenAI model integrations require disciplined trade-offs.`,
+          `Delivering customer-facing GenAI roadmap milestones requires ${currency}${prodReq.toLocaleString()}. We propose: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`
         ]);
       }
     } else {
       stance = `${agent.personality} budget defense`;
       action = 'COUNTER_OFFER';
+      terms = {
+        engineeringFunding: engReq,
+        marketingFunding: mktReq,
+        productAIFunding: prodReq,
+        engineering: engReq,
+        marketing: mktReq,
+        product: prodReq,
+        totalDemanded,
+      };
       if (isEng) {
         proposedOffer = engReq;
-        terms = { engineeringFunding: engReq, totalDemanded };
         message = pickRandom([
-          `Engineering can adjust our allocation ask to ${currency}${engReq.toLocaleString()} by phasing secondary tooling, provided our core platform uptime standards remain protected.`,
-          `We are willing to trim our requirement to ${currency}${engReq.toLocaleString()}, but further cuts would compromise database modernization.`
+          `Engineering can adjust our tripartite distribution to: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} by phasing secondary tooling while safeguarding database uptime.`,
+          `We revise our proposal to: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} (Total ${currency}${totalDemanded.toLocaleString()}).`
         ]);
       } else if (isMkt) {
         proposedOffer = mktReq;
-        terms = { marketingFunding: mktReq, totalDemanded };
         message = pickRandom([
-          `Marketing is prepared to refine our allocation ask to ${currency}${mktReq.toLocaleString()}, concentrating spend strictly on high-converting growth channels.`,
-          `To assist in closing the budget gap, Marketing can operate at ${currency}${mktReq.toLocaleString()} while protecting primary launch milestones.`
+          `Marketing refines our tripartite ask to: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}, concentrating spend on highest-ROI growth channels.`,
+          `To close the budget gap toward ${currency}1,00,000, Marketing proposes: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()}.`
         ]);
       } else {
         proposedOffer = prodReq;
-        terms = { productAIFunding: prodReq, totalDemanded };
         message = pickRandom([
-          `Product AI proposes a revised ask of ${currency}${prodReq.toLocaleString()} by prioritizing essential feature deliverables for Q3.`,
-          `We can streamline our requirements to ${currency}${prodReq.toLocaleString()} to help bring all three departments within the overall ${currency}1,000,000 pool.`
+          `Product AI proposes a revised tripartite split: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} by prioritizing essential Q3 feature deliverables.`,
+          `We can streamline to: Engineering ${currency}${engReq.toLocaleString()}, Marketing ${currency}${mktReq.toLocaleString()}, Product AI ${currency}${prodReq.toLocaleString()} to help bring all three departments within the overall ${currency}1,000,000 pool.`
         ]);
       }
     }

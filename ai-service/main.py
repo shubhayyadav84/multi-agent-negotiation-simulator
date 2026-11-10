@@ -726,13 +726,13 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
             stance = f"{p_name} opening request"
             if is_eng:
                 offer_val = float(eng_req)
-                msg = f"Engineering requests {currency}{eng_req:,} for database scaling and platform uptime reliability. Initial bids total {currency}{total_demanded:,} against our {currency}1,000,000 ceiling."
+                msg = f"Engineering proposes tripartite allocation: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,} (Total {currency}{total_demanded:,}). Core database uptime and platform reliability are our priority."
             elif is_mkt:
                 offer_val = float(mkt_req)
-                msg = f"Marketing requests {currency}{mkt_req:,} for global customer acquisition and brand growth campaigns to drive required enterprise ROI."
+                msg = f"Marketing proposes tripartite allocation: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,} (Total {currency}{total_demanded:,}). Securing dedicated growth campaigns is vital to hit revenue milestones."
             else:
                 offer_val = float(prod_req)
-                msg = f"Product AI requests {currency}{prod_req:,} for GenAI model integrations and UX development to meet roadmap deliverables."
+                msg = f"Product AI proposes tripartite allocation: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,} (Total {currency}{total_demanded:,}). GenAI model integrations require disciplined cross-team trade-offs."
             proposed_offer = {
                 "engineering": eng_req,
                 "marketing": mkt_req,
@@ -744,13 +744,13 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
             stance = f"{p_name} budget defense"
             if is_eng:
                 offer_val = float(eng_req)
-                msg = f"Engineering can adjust our allocation to {currency}{eng_req:,} by phasing secondary tooling, provided core uptime standards remain protected."
+                msg = f"Engineering proposes revised tripartite split: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,} by phasing secondary tooling while safeguarding database uptime."
             elif is_mkt:
                 offer_val = float(mkt_req)
-                msg = f"Marketing is prepared to refine our allocation ask to {currency}{mkt_req:,}, concentrating spend on high-converting growth channels."
+                msg = f"Marketing refines our tripartite ask to: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,}, concentrating spend on highest-ROI growth channels."
             else:
                 offer_val = float(prod_req)
-                msg = f"Product AI proposes a revised ask of {currency}{prod_req:,} by prioritizing essential Q3 feature releases."
+                msg = f"Product AI proposes revised tripartite split: Engineering {currency}{eng_req:,}, Marketing {currency}{mkt_req:,}, Product AI {currency}{prod_req:,} by prioritizing essential Q3 feature deliverables."
             proposed_offer = {
                 "engineering": eng_req,
                 "marketing": mkt_req,

@@ -453,9 +453,9 @@ class OrchestratorAgent {
         const humanAgents = agents.filter((a) => a.personality === 'Human' || a.is_human === true);
         if (aiAgents.length > 0 && humanAgents.length > 0) agents = [...aiAgents, ...humanAgents];
       }
-    } else {
+    } else if (sim.scenario_id && SCENARIO_PRESETS[sim.scenario_id]) {
       // In autonomous simulation mode: sort agents strictly by the canonical scenario preset order
-      const preset = this.getScenarioPreset(sim.scenario_id);
+      const preset = SCENARIO_PRESETS[sim.scenario_id];
       if (preset && Array.isArray(preset.agents)) {
         const orderMap = new Map();
         preset.agents.forEach((pa, i) => {
@@ -467,7 +467,7 @@ class OrchestratorAgent {
             const aId = (ag.id || '').toLowerCase();
             const aRole = (ag.role || '').toLowerCase();
             for (const [k, v] of orderMap.entries()) {
-              if (aId.includes(k) || aRole.includes(k)) return v;
+              if (aId === k || aRole === k || aId.includes(k) || aRole.includes(k)) return v;
             }
             return 99;
           };
@@ -486,10 +486,21 @@ class OrchestratorAgent {
 
     // Index of the agent whose turn it is now (0 to numAgents - 1)
     const activeIndex = turnsCount % numAgents;
-    const activeAgent = agents[activeIndex];
+
+    // Safety guard: prevent the exact same agent from taking two consecutive turns
+    const allAgentMsgs = (sim.messages || []).filter(m => m.sender_type === 'AGENT' || m.sender_type === 'HUMAN');
+    const lastMsg = allAgentMsgs[allAgentMsgs.length - 1];
+    let effectiveActiveIndex = activeIndex;
+    const isSameRole = Boolean(lastMsg?.sender_role && agents[activeIndex]?.role && lastMsg.sender_role === agents[activeIndex].role);
+    const isSameName = Boolean(lastMsg?.sender_name && agents[activeIndex]?.name && lastMsg.sender_name === agents[activeIndex].name);
+    if (lastMsg && numAgents > 1 && (isSameRole || isSameName)) {
+      effectiveActiveIndex = (activeIndex + 1) % numAgents;
+    }
+
+    const activeAgent = agents[effectiveActiveIndex];
 
     // Counterpart is the previous speaker, or the next agent in circular order
-    const counterpartIndex = (activeIndex + 1) % numAgents;
+    const counterpartIndex = (effectiveActiveIndex + 1) % numAgents;
     const counterpartAgent = agents[counterpartIndex];
 
     // Round ends when all agents in this round have completed exactly one turn
@@ -548,15 +559,41 @@ class OrchestratorAgent {
       if (offerVal === undefined || offerVal === null) {
         // Check for 3-department allocation in project-budget
         if (sim.scenario_id === 'project-budget') {
-          const threeNums = (customMove.message || '').replace(/,/g, '').match(/\b(\d{5,9})\b/g);
-          if (threeNums && threeNums.length >= 3) {
-            const roleKey = `${activeAgent.id || ''} ${activeAgent.role || ''} ${activeAgent.name || ''}`.toLowerCase();
+          const terms = customMove.terms || {};
+          const engAmt = terms.engineering || terms.engineeringFunding;
+          const mktAmt = terms.marketing || terms.marketingFunding;
+          const prodAmt = terms.product || terms.productFunding || terms.productAIFunding;
+
+          const roleKey = `${activeAgent.id || ''} ${activeAgent.role || ''} ${activeAgent.name || ''}`.toLowerCase();
+          if (engAmt && mktAmt && prodAmt) {
             if (roleKey.includes('engineering') || roleKey.includes('software') || roleKey.includes('infra')) {
-              offerVal = Number(threeNums[0]);
+              offerVal = Number(engAmt);
             } else if (roleKey.includes('marketing') || roleKey.includes('growth') || roleKey.includes('cmo')) {
-              offerVal = Number(threeNums[1]);
+              offerVal = Number(mktAmt);
             } else {
-              offerVal = Number(threeNums[2]);
+              offerVal = Number(prodAmt);
+            }
+
+            for (const ag of sim.agents || []) {
+              const k = `${ag.id || ''} ${ag.role || ''} ${ag.name || ''}`.toLowerCase();
+              let aOffer = null;
+              if (k.includes('engineering') || k.includes('infra') || k.includes('software')) aOffer = engAmt;
+              else if (k.includes('marketing') || k.includes('growth') || k.includes('cmo')) aOffer = mktAmt;
+              else aOffer = prodAmt;
+              if (aOffer) {
+                await db.updateAgent(simulationId, ag.role, { current_offer: aOffer });
+              }
+            }
+          } else {
+            const threeNums = (customMove.message || '').replace(/,/g, '').match(/\b(\d{5,9})\b/g);
+            if (threeNums && threeNums.length >= 3) {
+              if (roleKey.includes('engineering') || roleKey.includes('software') || roleKey.includes('infra')) {
+                offerVal = Number(threeNums[0]);
+              } else if (roleKey.includes('marketing') || roleKey.includes('growth') || roleKey.includes('cmo')) {
+                offerVal = Number(threeNums[1]);
+              } else {
+                offerVal = Number(threeNums[2]);
+              }
             }
           }
         }

@@ -3,7 +3,29 @@
  * Handles client communication with the Express Backend and AI Service
  */
 
+import { auth } from '../firebase/config';
+
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
+/**
+ * Retrieve current user's Firebase ID token for Authorization header
+ */
+async function getAuthHeaders() {
+  try {
+    if (auth && auth.currentUser) {
+      const token = await auth.currentUser.getIdToken();
+      if (token) {
+        return { Authorization: `Bearer ${token}` };
+      }
+    }
+  } catch (err) {
+    console.warn('[Simulation API] Failed to fetch Firebase ID token:', err.message);
+  }
+  return {};
+}
+
+// In-memory local simulations cache for offline/cold-start reliability
+const localSimulationsCache = new Map();
 
 export async function checkBackendHealth() {
   try {
@@ -18,9 +40,10 @@ export async function checkBackendHealth() {
 
 export async function startSimulation(scenarioId = 'vendor-pricing', customAgents = null, maxRounds = null, userEmail = null, userId = null) {
   try {
+    const authHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/simulations/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ scenarioId, customAgents, maxRounds, userEmail, userId }),
     });
 
@@ -34,18 +57,22 @@ export async function startSimulation(scenarioId = 'vendor-pricing', customAgent
     const local = createLocalSimulation(scenarioId, customAgents, maxRounds || 10);
     local.user_email = userEmail;
     local.user_id = userId;
+    localSimulationsCache.set(local.id, local);
     return local;
   }
 }
 
 export async function listSimulations(userEmail = null, userId = null) {
   try {
+    const authHeaders = await getAuthHeaders();
     const params = new URLSearchParams();
     if (userEmail) params.append('userEmail', userEmail);
     if (userId) params.append('userId', userId);
     const query = params.toString() ? `?${params.toString()}` : '';
 
-    const res = await fetch(`${BACKEND_URL}/api/simulations${query}`);
+    const res = await fetch(`${BACKEND_URL}/api/simulations${query}`, {
+      headers: { ...authHeaders },
+    });
     if (res.ok) {
       const json = await res.json();
       return json.data || [];
@@ -58,7 +85,10 @@ export async function listSimulations(userEmail = null, userId = null) {
 
 export async function getSimulationState(simulationId) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}`);
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}`, {
+      headers: { ...authHeaders },
+    });
     if (res.ok) {
       const json = await res.json();
       return json.data;
@@ -66,14 +96,15 @@ export async function getSimulationState(simulationId) {
   } catch (err) {
     console.warn('[Simulation API] Failed to fetch state:', err.message);
   }
-  return null;
+  return localSimulationsCache.get(simulationId) || null;
 }
 
 export async function stepSimulation(simulationId, customMove = null) {
   try {
+    const authHeaders = await getAuthHeaders();
     const options = {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
     };
     if (customMove) {
       options.body = JSON.stringify(customMove);
@@ -87,13 +118,17 @@ export async function stepSimulation(simulationId, customMove = null) {
   } catch (err) {
     console.warn('[Simulation API] Step failed on backend, executing local step:', err.message);
   }
-  return null;
+
+  // Local fallback turn progression for local simulations or during backend startup
+  return advanceLocalSimulation(simulationId, customMove);
 }
 
 export async function pauseSimulation(simulationId) {
   try {
+    const authHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/pause`, {
       method: 'POST',
+      headers: { ...authHeaders },
     });
     if (res.ok) {
       const json = await res.json();
@@ -102,13 +137,20 @@ export async function pauseSimulation(simulationId) {
   } catch (err) {
     console.warn('[Simulation API] Pause error:', err.message);
   }
+  const local = localSimulationsCache.get(simulationId);
+  if (local) {
+    local.status = 'PAUSED';
+    return { ...local };
+  }
   return null;
 }
 
 export async function resumeSimulation(simulationId) {
   try {
+    const authHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/resume`, {
       method: 'POST',
+      headers: { ...authHeaders },
     });
     if (res.ok) {
       const json = await res.json();
@@ -117,14 +159,20 @@ export async function resumeSimulation(simulationId) {
   } catch (err) {
     console.warn('[Simulation API] Resume error:', err.message);
   }
+  const local = localSimulationsCache.get(simulationId);
+  if (local) {
+    local.status = 'RUNNING';
+    return { ...local };
+  }
   return null;
 }
 
 export async function endSimulation(simulationId, reason = 'Left in between') {
   try {
+    const authHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/end`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ reason }),
     });
     if (res.ok) {
@@ -134,13 +182,20 @@ export async function endSimulation(simulationId, reason = 'Left in between') {
   } catch (err) {
     console.warn('[Simulation API] End error:', err.message);
   }
+  const local = localSimulationsCache.get(simulationId);
+  if (local) {
+    local.status = 'LEFT_IN_BETWEEN';
+    return { ...local };
+  }
   return null;
 }
 
 export async function restartSimulation(simulationId) {
   try {
+    const authHeaders = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/restart`, {
       method: 'POST',
+      headers: { ...authHeaders },
     });
     if (res.ok) {
       const json = await res.json();
@@ -232,42 +287,42 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
         {
           id: 'vp-engineering',
           role: 'Engineering Lead',
-          name: 'Lead Software Engineer',
+          name: 'VP of Engineering',
           personality: 'Risk-Averse',
-          goal: 'Secure core infrastructure capital (target ₹45,00,000) for platform reliability and tech debt reduction',
-          current_offer: 4500000,
-          target_value: 4500000,
-          reservation_value: 3500000,
+          goal: 'Secure core infrastructure capital (target ₹4,50,000) for platform reliability and tech debt reduction',
+          current_offer: 450000,
+          target_value: 450000,
+          reservation_value: 350000,
           stance: 'Justifying reliability',
-          progress_percent: 50,
-        },
-        {
-          id: 'head-product-ai',
-          role: 'Product Lead',
-          name: 'Product Manager',
-          personality: 'Collaborative',
-          goal: 'Secure feature development and GenAI product launch capital (target ₹35,00,000) to meet roadmap goals',
-          current_offer: 3500000,
-          target_value: 3500000,
-          reservation_value: 2500000,
-          stance: 'Highlighting innovation',
           progress_percent: 50,
         },
         {
           id: 'cmo-marketing',
           role: 'Marketing Lead',
-          name: 'Marketing Director',
+          name: 'Chief Marketing Officer',
           personality: 'Aggressive',
-          goal: 'Secure customer acquisition and paid growth capital (target ₹25,00,000)',
-          current_offer: 2500000,
-          target_value: 2500000,
-          reservation_value: 1500000,
+          goal: 'Secure customer acquisition and paid growth capital (target ₹3,50,000)',
+          current_offer: 350000,
+          target_value: 350000,
+          reservation_value: 250000,
           stance: 'Demanding growth capital',
           progress_percent: 45,
         },
+        {
+          id: 'head-product-ai',
+          role: 'Product AI Lead',
+          name: 'Head of Product AI',
+          personality: 'Collaborative',
+          goal: 'Secure feature development and GenAI product launch capital (target ₹3,00,000) to meet roadmap goals',
+          current_offer: 300000,
+          target_value: 300000,
+          reservation_value: 200000,
+          stance: 'Highlighting innovation',
+          progress_percent: 50,
+        },
       ],
-      openingOffer: 4500000,
-      openingMessage: 'Engineering requires ₹45,00,000 allocation for essential cloud infrastructure, database modernization, and platform uptime.',
+      openingOffer: 450000,
+      openingMessage: 'Engineering requires ₹4,50,000 allocation for essential cloud infrastructure, database modernization, and platform uptime.',
     },
   };
 
@@ -290,6 +345,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
           role: match.role || baseAgent.role,
           personality: match.personality || baseAgent.personality,
           goal: match.goal || baseAgent.goal,
+          is_human: match.is_human === true || match.personality === 'Human',
         };
       }
     }
@@ -351,4 +407,158 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
     messages: initialMessages,
     offers: initialOffers,
   };
+}
+
+/**
+ * Local turn advance engine for fallback offline / cold-start reliability
+ */
+function advanceLocalSimulation(simulationId, customMove = null) {
+  let sim = localSimulationsCache.get(simulationId);
+  if (!sim) {
+    sim = {
+      id: simulationId,
+      scenario_id: 'project-budget',
+      scenario_title: 'Project Budget Allocation',
+      status: 'RUNNING',
+      current_round: 1,
+      max_rounds: 12,
+      current_gap: 0,
+      agreement_likelihood: 50,
+      agents: [
+        { id: 'vp-engineering', role: 'Engineering Lead', name: 'VP of Engineering', personality: 'Risk-Averse', current_offer: 450000 },
+        { id: 'cmo-marketing', role: 'Marketing Lead', name: 'Chief Marketing Officer', personality: 'Aggressive', current_offer: 350000 },
+        { id: 'head-product-ai', role: 'Product AI Lead', name: 'Head of Product AI', personality: 'Collaborative', current_offer: 300000 },
+      ],
+      messages: [],
+      offers: [],
+    };
+    localSimulationsCache.set(simulationId, sim);
+  }
+
+  if (sim.status !== 'RUNNING') return sim;
+
+  const agents = sim.agents || [];
+  if (agents.length === 0) return sim;
+
+  const currentRoundMessages = (sim.messages || []).filter(
+    (m) => m.round_number === sim.current_round && (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN')
+  );
+
+  const activeIndex = currentRoundMessages.length % agents.length;
+  let activeAgent = agents[activeIndex];
+
+  // Prevent consecutive speaker repeats
+  const lastMsg = currentRoundMessages[currentRoundMessages.length - 1];
+  if (lastMsg && (lastMsg.sender_role === activeAgent.role || lastMsg.sender_name === activeAgent.name)) {
+    activeAgent = agents[(activeIndex + 1) % agents.length];
+  }
+
+  const isHumanTurn = activeAgent.personality === 'Human' || activeAgent.is_human === true;
+  const isRoundEnd = (currentRoundMessages.length + 1) % agents.length === 0;
+
+  if (isHumanTurn && !customMove) {
+    return sim;
+  }
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let moveMessage = '';
+  let moveOffer = activeAgent.current_offer;
+  let moveAction = (sim.messages || []).some(m => m.offer_value) ? 'COUNTER_OFFER' : 'OFFER';
+
+  if (isHumanTurn && customMove) {
+    moveMessage = customMove.message || 'I propose our revised allocation.';
+    moveOffer = customMove.offer_value !== undefined ? customMove.offer_value : activeAgent.current_offer;
+    moveAction = customMove.action || 'COUNTER_OFFER';
+  } else {
+    // Generate AI move
+    if (sim.scenario_id === 'project-budget') {
+      const isEng = (activeAgent.id || '').includes('engineering') || (activeAgent.role || '').toLowerCase().includes('engineering');
+      const isMkt = (activeAgent.id || '').includes('marketing') || (activeAgent.role || '').toLowerCase().includes('marketing');
+      const roundConcession = Math.min(sim.current_round * 10000, 40000);
+
+      const engVal = 450000 - (isEng ? roundConcession : Math.round(roundConcession * 0.8));
+      const mktVal = 350000 - (isMkt ? roundConcession : Math.round(roundConcession * 0.7));
+      const prodVal = 300000 - (!isEng && !isMkt ? roundConcession : Math.round(roundConcession * 0.6));
+      const totalDemanded = engVal + mktVal + prodVal;
+
+      if (sim.current_round >= 8 || totalDemanded <= 1000000) {
+        moveAction = 'ACCEPT';
+        moveOffer = isEng ? 410000 : (isMkt ? 325000 : 265000);
+        moveMessage = `We agree to finalize the balanced ₹1,000,000 tripartite allocation: Engineering ₹410,000, Marketing ₹325,000, Product AI ₹265,000.`;
+      } else {
+        moveOffer = isEng ? engVal : (isMkt ? mktVal : prodVal);
+        if (isEng) {
+          moveMessage = `Engineering proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Platform reliability remains vital.`;
+        } else if (isMkt) {
+          moveMessage = `Marketing proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Securing enterprise customer acquisition capital is essential.`;
+        } else {
+          moveMessage = `Product AI proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Balancing GenAI model development and shared capacities.`;
+        }
+      }
+    } else {
+      moveOffer = activeAgent.current_offer;
+      moveMessage = `${activeAgent.role} presents counter-offer of ₹${Number(moveOffer).toLocaleString()}.`;
+    }
+  }
+
+  // Update agent offer
+  activeAgent.current_offer = moveOffer;
+
+  const newMessages = [
+    ...(sim.messages || []),
+    {
+      id: `msg_local_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      round_number: sim.current_round,
+      sender_type: isHumanTurn ? 'HUMAN' : 'AGENT',
+      sender_name: activeAgent.name,
+      sender_role: activeAgent.role,
+      personality: activeAgent.personality,
+      message: moveMessage,
+      offer_value: moveOffer,
+      action: moveAction,
+      timestamp_label: timeStr,
+    },
+  ];
+
+  let nextRound = sim.current_round;
+  let status = sim.status;
+
+  if (moveAction === 'ACCEPT') {
+    status = 'COMPLETED';
+    newMessages.push({
+      id: `msg_local_accept_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'ORCHESTRATOR',
+      sender_name: 'Orchestrator Agent',
+      sender_role: 'Orchestrator',
+      message: 'Congratulations! All participating parties have successfully reached an agreement. The negotiation has concluded.',
+      action: 'STATUS',
+      timestamp_label: timeStr,
+    });
+  } else if (isRoundEnd) {
+    nextRound = sim.current_round + 1;
+    newMessages.push({
+      id: `msg_local_round_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'ORCHESTRATOR',
+      sender_name: 'Orchestrator Agent',
+      sender_role: 'Orchestrator',
+      message: `Round ${sim.current_round} concluded. Advancing to Round ${nextRound}...`,
+      action: 'STATUS',
+      timestamp_label: timeStr,
+    });
+  }
+
+  const updatedSim = {
+    ...sim,
+    current_round: nextRound,
+    status,
+    messages: newMessages,
+    agreement_likelihood: Math.min(95, 50 + nextRound * 4),
+  };
+
+  localSimulationsCache.set(simulationId, updatedSim);
+  return updatedSim;
 }

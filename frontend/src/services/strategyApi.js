@@ -2,7 +2,26 @@
  * Strategy Library & Gemini AI Doubt Assistant Client API
  */
 
+import { auth } from '../firebase/config';
+
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+
+/**
+ * Retrieve current user's Firebase ID token for Authorization header
+ */
+async function getAuthHeaders() {
+  try {
+    if (auth && auth.currentUser) {
+      const token = await auth.currentUser.getIdToken();
+      if (token) {
+        return { Authorization: `Bearer ${token}` };
+      }
+    }
+  } catch (err) {
+    console.warn('[Strategy API] Failed to fetch Firebase ID token:', err.message);
+  }
+  return {};
+}
 
 export async function fetchStrategies({ category, difficulty, search, scenarioId } = {}) {
   try {
@@ -41,7 +60,10 @@ export async function fetchStrategyById(id) {
 
 export async function fetchUserBookmarks(userId) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/strategies/bookmarks?userId=${encodeURIComponent(userId || 'guest')}`);
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/strategies/bookmarks?userId=${encodeURIComponent(userId || 'guest')}`, {
+      headers: { ...authHeaders },
+    });
     if (res.ok) {
       const json = await res.json();
       return json.data || [];
@@ -62,11 +84,12 @@ export async function toggleBookmarkApi(strategyId, isBookmarked, userId, userEm
   try {
     const endpoint = `${BACKEND_URL}/api/strategies/${strategyId}/bookmark`;
     const method = isBookmarked ? 'DELETE' : 'POST';
+    const authHeaders = await getAuthHeaders();
     const body = method === 'POST' ? JSON.stringify({ userId: userId || 'guest', userEmail }) : undefined;
 
     await fetch(endpoint + (method === 'DELETE' ? `?userId=${encodeURIComponent(userId || 'guest')}` : ''), {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body
     });
   } catch (err) {
@@ -91,9 +114,10 @@ export async function toggleBookmarkApi(strategyId, isBookmarked, userId, userEm
 }
 
 export async function askGeminiTutor({ message, strategyId, conversationId, userId, userEmail }) {
+  const authHeaders = await getAuthHeaders();
   const res = await fetch(`${BACKEND_URL}/api/strategy-library/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({
       message,
       strategyId,
@@ -114,7 +138,10 @@ export async function askGeminiTutor({ message, strategyId, conversationId, user
 
 export async function fetchConversationHistory(userId) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/strategy-library/conversations?userId=${encodeURIComponent(userId || 'guest')}`);
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/strategy-library/conversations?userId=${encodeURIComponent(userId || 'guest')}`, {
+      headers: { ...authHeaders },
+    });
     if (res.ok) {
       const json = await res.json();
       return json.data || [];
@@ -127,7 +154,10 @@ export async function fetchConversationHistory(userId) {
 
 export async function fetchConversationMessages(convId) {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/strategy-library/conversations/${convId}`);
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/strategy-library/conversations/${convId}`, {
+      headers: { ...authHeaders },
+    });
     if (res.ok) {
       const json = await res.json();
       return json.data?.messages || [];

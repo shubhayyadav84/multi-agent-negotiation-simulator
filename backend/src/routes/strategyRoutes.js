@@ -6,6 +6,9 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../db/db');
 const { answerStrategyDoubt } = require('../services/geminiTutorService');
+const { optionalFirebaseToken } = require('../middleware/authMiddleware');
+
+router.use(optionalFirebaseToken);
 
 /**
  * GET /api/strategies
@@ -28,7 +31,7 @@ router.get('/', async (req, res) => {
  */
 router.get('/bookmarks', async (req, res) => {
   try {
-    const userId = req.query.userId || req.headers['x-user-id'] || 'guest';
+    const userId = req.user?.uid || req.query.userId || req.headers['x-user-id'] || 'guest';
     const bookmarks = await db.getUserBookmarks(userId);
     return res.json({ success: true, data: bookmarks });
   } catch (err) {
@@ -42,7 +45,7 @@ router.get('/bookmarks', async (req, res) => {
  */
 router.get('/conversations', async (req, res) => {
   try {
-    const userId = req.query.userId || req.headers['x-user-id'] || 'guest';
+    const userId = req.user?.uid || req.query.userId || req.headers['x-user-id'] || 'guest';
     const convs = await db.listStrategyConversations(userId);
     return res.json({ success: true, data: convs });
   } catch (err) {
@@ -97,6 +100,9 @@ router.post('/chat', async (req, res) => {
       userEmail
     } = req.body || {};
 
+    const effectiveUserId = req.user?.uid || userId;
+    const effectiveUserEmail = req.user?.email || userEmail;
+
     if (!message || !message.trim()) {
       return res.status(400).json({ success: false, error: 'Message cannot be empty.' });
     }
@@ -105,6 +111,9 @@ router.post('/chat', async (req, res) => {
       message,
       strategyId,
       conversationId,
+      userId: effectiveUserId,
+      userEmail: effectiveUserEmail,
+    });
       userId,
       userEmail
     });
@@ -161,7 +170,7 @@ router.post('/:id/bookmark', async (req, res) => {
 router.delete('/:id/bookmark', async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.query.userId || req.headers['x-user-id'] || 'guest';
+    const userId = req.user?.uid || req.query.userId || req.headers['x-user-id'] || 'guest';
     await db.removeBookmark(userId, id);
     return res.json({ success: true, message: 'Bookmark removed' });
   } catch (err) {

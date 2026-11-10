@@ -57,6 +57,33 @@ export const TRANSLATIONS = {
     agent_department_b_constraint_2: "Must not request funding above its own project cost estimate (max 550,000 USD)",
     agent_department_b_constraint_3: "Must not agree to an allocation that makes an already committed delivery date impossible without renegotiating that date.",
 
+    // Project Budget Allocation (3-Agent Multilateral)
+    agent_vp_engineering_name: "Engineering & Infrastructure Lead",
+    agent_vp_engineering_stakeholder: "Core Engineering Department",
+    agent_vp_engineering_role_desc: "Defends core technical infrastructure, cloud compute scaling, database modernization, and platform uptime.",
+    agent_vp_engineering_primary_goal: "Secure sufficient funding (target ₹4,50,000) for platform reliability, tech debt, and core infrastructure.",
+    agent_vp_engineering_constraint_0: "Must receive sufficient funding to meet its minimum operational requirement (min ₹2,50,000)",
+    agent_vp_engineering_constraint_1: "Must receive at least the minimum shared team hours required (min 700 hours)",
+    agent_vp_engineering_constraint_2: "Must not request funding above its own project cost estimate (max ₹6,00,000)",
+    agent_vp_engineering_constraint_3: "Must not drop its top-priority initiative to fund a lower-priority one.",
+
+    agent_cmo_marketing_name: "Marketing & Growth Lead",
+    agent_cmo_marketing_stakeholder: "Growth & Marketing Department",
+    agent_cmo_marketing_role_desc: "Fights for global brand awareness, customer acquisition campaigns, and market expansion.",
+    agent_cmo_marketing_primary_goal: "Secure sufficient funding (target ₹3,50,000) for global customer acquisition and marketing campaigns.",
+    agent_cmo_marketing_constraint_0: "Must receive sufficient funding to meet its minimum operational requirement (min ₹2,00,000)",
+    agent_cmo_marketing_constraint_1: "Must receive at least the minimum shared team hours required (min 600 hours)",
+    agent_cmo_marketing_constraint_2: "Must not request funding above its own project cost estimate (max ₹5,50,000)",
+    agent_cmo_marketing_constraint_3: "Must not agree to an allocation that makes an already committed campaign date impossible without renegotiating.",
+
+    agent_head_product_ai_name: "Product & AI Innovation Lead",
+    agent_head_product_ai_stakeholder: "Product & AI Innovation Department",
+    agent_head_product_ai_role_desc: "Champions customer-facing GenAI capabilities, UX enhancements, and user growth initiatives.",
+    agent_head_product_ai_primary_goal: "Secure feature development and GenAI product launch capital (target ₹3,00,000) to meet roadmap goals.",
+    agent_head_product_ai_constraint_0: "Must receive sufficient funding to meet its minimum operational requirement (min ₹2,00,000)",
+    agent_head_product_ai_constraint_1: "Must receive at least the minimum shared team hours required (min 500 hours)",
+    agent_head_product_ai_constraint_2: "Must not request funding above its own project cost estimate (max ₹4,00,000)",
+
     simulationMode: "Simulation Mode",
     simulationModeDesc: "Watch AI agents negotiate autonomously.",
     practiceMode: "Practice Mode",

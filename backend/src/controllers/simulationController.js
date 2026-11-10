@@ -7,6 +7,22 @@ const { db } = require('../db/db');
 const { orchestratorService } = require('../services/orchestratorService');
 
 /**
+ * Verify user ownership of simulation
+ */
+function isUserAuthorizedForSim(sim, req) {
+  if (!sim) return false;
+  // If simulation is legacy or unassigned (no user_id or user_email), allow creator
+  if (!sim.user_id && !sim.user_email) return true;
+  // If authenticated user is present, match UID or Email
+  if (req.user) {
+    if (req.user.uid && sim.user_id && req.user.uid === sim.user_id) return true;
+    if (req.user.email && sim.user_email && req.user.email.toLowerCase() === sim.user_email.toLowerCase()) return true;
+    return false;
+  }
+  return true;
+}
+
+/**
  * Start or Initialize a Simulation
  * POST /api/simulations/start
  */
@@ -20,12 +36,15 @@ async function startSimulation(req, res) {
       userId = null,
     } = req.body || {};
 
+    const effectiveUserId = req.user?.uid || (userId ? String(userId).trim() : null);
+    const effectiveUserEmail = req.user?.email || (userEmail ? String(userEmail).trim() : null);
+
     const fullState = await orchestratorService.initializeSimulation({
       scenarioId,
       customAgents,
       maxRounds,
-      userEmail: userEmail ? String(userEmail).trim() : null,
-      userId: userId ? String(userId).trim() : null,
+      userEmail: effectiveUserEmail,
+      userId: effectiveUserId,
     });
 
     return res.status(201).json({
@@ -49,6 +68,15 @@ async function getSimulationState(req, res) {
     if (!sim) {
       return res.status(404).json({ success: false, error: 'Simulation not found' });
     }
+
+    // Ownership check: If authenticated and simulation has an owner, restrict access
+    if (!isUserAuthorizedForSim(sim, req)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: You do not have permission to view this simulation.',
+      });
+    }
+
     return res.json({ success: true, data: sim });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
@@ -62,9 +90,12 @@ async function getSimulationState(req, res) {
 async function listSimulations(req, res) {
   try {
     const { userEmail, userId, limit = 50 } = req.query || {};
+    const effectiveUserId = req.user?.uid || (userId ? String(userId).trim() : null);
+    const effectiveUserEmail = req.user?.email || (userEmail ? String(userEmail).trim() : null);
+
     const list = await db.listSimulations({
-      userEmail: userEmail ? String(userEmail).trim() : null,
-      userId: userId ? String(userId).trim() : null,
+      userEmail: effectiveUserEmail,
+      userId: effectiveUserId,
       limit: Number(limit) || 50,
     });
     return res.json({ success: true, data: list });
@@ -80,6 +111,19 @@ async function listSimulations(req, res) {
 async function advanceSimulationStep(req, res) {
   try {
     const { id } = req.params;
+    const sim = await db.getSimulation(id);
+    if (!sim) {
+      return res.status(404).json({ success: false, error: 'Simulation not found' });
+    }
+
+    // Ownership check
+    if (!isUserAuthorizedForSim(sim, req)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: You do not have permission to modify this simulation.',
+      });
+    }
+
     const { humanMove, message, offer_value, action, terms, stance } = req.body || {};
     const customMove = humanMove || (message ? { message, offer_value, action, terms, stance } : null);
     const result = await orchestratorService.advanceStep(id, customMove);

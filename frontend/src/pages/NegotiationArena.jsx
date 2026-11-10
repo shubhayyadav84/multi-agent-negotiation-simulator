@@ -283,6 +283,10 @@ const NegotiationArena = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreen] = useState(true);
   const [turnRunning, setTurnRunning] = useState(false);
+  const turnRunningRef = useRef(false);
+  useEffect(() => {
+    turnRunningRef.current = turnRunning;
+  }, [turnRunning]);
 
   // Practice Mode detection: strictly true ONLY when entering Practice Mode flow
   const isPracticeMode = Boolean(
@@ -371,6 +375,11 @@ const NegotiationArena = () => {
     (activeTurnAgent?.personality === 'Human' ||
       activeTurnAgent?.is_human === true ||
       activeTurnAgent?.id === location.state?.userRoleAgentId ||
+      (activeTurnAgent?.id && location.state?.userRoleAgentId && activeTurnAgent.id.includes(location.state.userRoleAgentId)) ||
+      (location.state?.userRole?.id && activeTurnAgent?.id && activeTurnAgent.id.includes(location.state.userRole.id)) ||
+      (activeTurnAgent?.role && location.state?.userRole?.title && activeTurnAgent.role.toLowerCase() === location.state.userRole.title.toLowerCase()) ||
+      (activeTurnAgent?.role && location.state?.userRole?.role && activeTurnAgent.role.toLowerCase() === location.state.userRole.role.toLowerCase()) ||
+      (activeTurnAgent?.role && location.state?.userRole?.name && activeTurnAgent.role.toLowerCase().includes(location.state.userRole.name.toLowerCase())) ||
       (activeTurnAgent?.role && location.state?.userSide === (activeTurnAgent.role.toLowerCase().includes('buyer') ? 'buyer' : 'seller')))
   );
 
@@ -391,6 +400,8 @@ const NegotiationArena = () => {
   // Real-time detection of monetary amount in single chat input as user types
   const detectedOfferInInput = extractMonetaryOffer(practiceMessage);
   const detectedBudgetSplit = currentScenarioId === 'project-budget' ? extractProjectBudgetAllocations(practiceMessage) : null;
+  const inputIntent = detectNegotiationIntent(practiceMessage);
+  const isBudgetValidForSubmit = currentScenarioId !== 'project-budget' || Boolean(detectedBudgetSplit) || inputIntent.isAccept || inputIntent.isReject;
 
   /**
    * Dispatches human negotiation messages via the single chat input
@@ -413,6 +424,11 @@ const NegotiationArena = () => {
     const intent = detectNegotiationIntent(text);
     const extractedOffer = extractMonetaryOffer(text);
     const budgetSplit = currentScenarioId === 'project-budget' ? extractProjectBudgetAllocations(text) : null;
+
+    // In Project Budget Allocation, require all 3 allocations unless explicitly accepting or rejecting
+    if (currentScenarioId === 'project-budget' && isPracticeMode && !budgetSplit && !intent.isAccept && !intent.isReject) {
+      return;
+    }
 
     let actionType = 'COUNTER_OFFER';
     let numericOffer = null;
@@ -637,8 +653,9 @@ const NegotiationArena = () => {
     }
 
     timerRef.current = setInterval(async () => {
-      if (turnRunning) return;
+      if (turnRunningRef.current) return;
 
+      turnRunningRef.current = true;
       setTurnRunning(true);
       try {
         const updated = await stepSimulation(simulation.id);
@@ -652,6 +669,7 @@ const NegotiationArena = () => {
       } catch (err) {
         console.warn('Error taking turn:', err);
       } finally {
+        turnRunningRef.current = false;
         setTurnRunning(false);
       }
     }, 1200);
@@ -659,15 +677,17 @@ const NegotiationArena = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [simulation?.id, simulation?.status, isPaused, turnRunning, isPracticeMode]);
+  }, [simulation?.id, simulation?.status, isPaused, isPracticeMode]);
 
   // 2.1 AI Opponent auto-counter in Practice Mode (triggers after user takes turn)
   useEffect(() => {
-    if (!isPracticeMode || !isAiOpponentTurn || turnRunning || !simulation?.id) {
+    if (!isPracticeMode || !isAiOpponentTurn || turnRunningRef.current || !simulation?.id || simulation?.status !== 'RUNNING' || isPaused) {
       return;
     }
 
     const aiTimeout = setTimeout(async () => {
+      if (turnRunningRef.current) return;
+      turnRunningRef.current = true;
       setTurnRunning(true);
       try {
         const updated = await stepSimulation(simulation.id);
@@ -680,12 +700,13 @@ const NegotiationArena = () => {
       } catch (err) {
         console.warn('AI opponent step error in practice mode:', err);
       } finally {
+        turnRunningRef.current = false;
         setTurnRunning(false);
       }
     }, 1400);
 
     return () => clearTimeout(aiTimeout);
-  }, [isPracticeMode, isAiOpponentTurn, turnRunning, simulation?.id, simulation?.messages?.length]);
+  }, [isPracticeMode, isAiOpponentTurn, simulation?.id, simulation?.status, isPaused, simulation?.messages?.length]);
 
   // 3. Auto-scroll transcript to bottom on new messages
   useEffect(() => {
@@ -1521,12 +1542,10 @@ const NegotiationArena = () => {
                     isTerminated
                       ? "Negotiation has concluded. Inspect the summary report above or restart to begin a new session."
                       : isHumanTurn && !turnRunning
-                        ? isOpeningMove
-                          ? currentScenarioId === 'project-budget'
-                            ? "State your opening budget ask (e.g. 'I need ₹400,000') or propose a tripartite split (e.g. 'Engineering 400k, Marketing 350k, Product 250k')..."
-                            : "State your opening proposal or offer (e.g. 'I can adjust my salary expectation to ₹173,500' or '₹165,000')..."
-                          : currentScenarioId === 'project-budget'
-                            ? "Enter your department ask (e.g. '₹380,000' or '380k') or propose a 3-way split (e.g. 'Engineering 400k, Marketing 340k, Product 260k')..."
+                        ? currentScenarioId === 'project-budget'
+                          ? "Specify all 3 department allocations: Engineering, Marketing, Product AI (e.g. 'Engineering 400k, Marketing 340k, Product AI 260k' or '400k, 340k, 260k')..."
+                          : isOpeningMove
+                            ? "State your opening proposal or offer (e.g. 'I can adjust my salary expectation to ₹173,500' or '₹165,000')..."
                             : "Type your offer, response, or question (e.g. 'I propose ₹160,000' or 'I accept the deal')..."
                         : "AI counterpart is reviewing the dialogue and formulating a response..."
                   }
@@ -1536,7 +1555,7 @@ const NegotiationArena = () => {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      if (practiceMessage.trim() && isHumanTurn && !turnRunning && !isTerminated) {
+                      if (practiceMessage.trim() && isHumanTurn && !turnRunning && !isTerminated && isBudgetValidForSubmit) {
                         handleSendPracticeMessage();
                       }
                     }
@@ -1544,6 +1563,14 @@ const NegotiationArena = () => {
                   maxLength={1000}
                   rows={2}
                 />
+
+                {/* Validation hint for Project Budget when 3 allocations are needed */}
+                {currentScenarioId === 'project-budget' && isHumanTurn && practiceMessage.trim().length > 0 && !isBudgetValidForSubmit && (
+                  <div style={{ fontSize: '0.78rem', color: '#b45309', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', padding: '6px 10px', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                    <span>Please enter three separate values for Engineering, Marketing, and Product AI (e.g. <em>"Engineering 400k, Marketing 340k, Product AI 260k"</em> or <em>"400k, 340k, 260k"</em>).</span>
+                  </div>
+                )}
 
                 {/* Quick Suggestion Chips */}
                 {!isTerminated && isHumanTurn && !turnRunning && (
@@ -1626,7 +1653,7 @@ const NegotiationArena = () => {
                   <button
                     type="button"
                     className="btn-dock-action btn-dock-send"
-                    disabled={!isHumanTurn || turnRunning || isTerminated || !practiceMessage.trim()}
+                    disabled={!isHumanTurn || turnRunning || isTerminated || !practiceMessage.trim() || !isBudgetValidForSubmit}
                     onClick={() => handleSendPracticeMessage()}
                     title={
                       isTerminated

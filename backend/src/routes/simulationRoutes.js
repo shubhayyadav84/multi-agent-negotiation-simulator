@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { verifyFirebaseToken } = require('../middleware/authMiddleware');
 const {
   startSimulation,
   getSimulationState,
@@ -13,16 +14,16 @@ const {
   exportSimulation,
 } = require('../controllers/simulationController');
 
-// Routes
-router.post('/start', startSimulation);
-router.get('/', listSimulations);
-router.get('/:id', getSimulationState);
-router.get('/:id/export', exportSimulation);
-router.post('/:id/step', advanceSimulationStep);
-router.post('/:id/run', runFullSimulation);
-router.post('/:id/pause', pauseSimulation);
-router.post('/:id/resume', resumeSimulation);
-router.post('/:id/end', endSimulation);
-router.post('/:id/restart', restartSimulation);
+// All simulation routes are protected by Firebase ID Token Authentication
+router.post('/start', verifyFirebaseToken, startSimulation);
+router.get('/', verifyFirebaseToken, listSimulations);
+router.get('/:id', verifyFirebaseToken, getSimulationState);
+router.get('/:id/export', verifyFirebaseToken, exportSimulation);
+router.post('/:id/step', verifyFirebaseToken, advanceSimulationStep);
+router.post('/:id/run', verifyFirebaseToken, runFullSimulation);
+router.post('/:id/pause', verifyFirebaseToken, pauseSimulation);
+router.post('/:id/resume', verifyFirebaseToken, resumeSimulation);
+router.post('/:id/end', verifyFirebaseToken, endSimulation);
+router.post('/:id/restart', verifyFirebaseToken, restartSimulation);
 
 module.exports = router;

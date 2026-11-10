@@ -114,9 +114,6 @@ router.post('/chat', async (req, res) => {
       userId: effectiveUserId,
       userEmail: effectiveUserEmail,
     });
-      userId,
-      userEmail
-    });
 
     return res.json({
       success: true,

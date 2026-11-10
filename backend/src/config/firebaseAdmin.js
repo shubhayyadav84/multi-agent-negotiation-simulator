@@ -16,7 +16,7 @@ const admin = require('firebase-admin');
 let isFirebaseAdminConfigured = false;
 
 try {
-  if (admin.apps.length > 0) {
+  if (admin && Array.isArray(admin.apps) && admin.apps.length > 0) {
     isFirebaseAdminConfigured = true;
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim();

@@ -824,10 +824,13 @@ if (deadlock.detected && !compromiseAlreadyAttempted) {
 }
     // Compute dynamic agreement likelihood %
     const threshold = typeof preset.agreement_threshold === 'number' ? preset.agreement_threshold : 0;
-    let likelihood = Math.min(
-      99,
-      Math.max(10, Math.round(100 - (currentGap / 200) + (sim.current_round * 5)))
-    );
+    const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
+    let likelihood = allAggressive
+      ? Math.max(10, Math.round(35 - (sim.current_round / (sim.max_rounds || 10)) * 20))
+      : Math.min(
+          99,
+          Math.max(10, Math.round(100 - (currentGap / 200) + (sim.current_round * 5)))
+        );
 
     // 7. Evaluate Stopping Conditions
     const stoppingEvaluation = this.evaluateStoppingConditions({
@@ -844,7 +847,15 @@ if (deadlock.detected && !compromiseAlreadyAttempted) {
       allHaveOffered,
       totalAgents: agents.length,
       isPractice,
+      allAggressive,
+      minRounds: 5,
     });
+
+    // Guard: Agreement CANNOT be reached before Round 5, or when all agents are Aggressive!
+    if ((sim.current_round < 5 || allAggressive) && stoppingEvaluation.finalStatus === 'COMPLETED') {
+      stoppingEvaluation.shouldStop = false;
+      stoppingEvaluation.finalStatus = 'RUNNING';
+    }
 
     // Guard for Practice Mode & Multilateral Negotiations:
     // A round is not concluded until every participant in that round has taken their turn!
@@ -952,7 +963,16 @@ if (
     allHaveOffered,
     totalAgents = 2,
     isPractice = false,
+    allAggressive = false,
+    minRounds = 1,
   }) {
+    const numMaxRounds = Number(maxRounds || 10);
+    const numCurRound = Number(currentRound || 1);
+
+    // Rule 1: Minimum rounds required before an agreement can be finalized.
+    // Rule 2: If all agents are Aggressive, never allow agreement (must result in DEADLOCK).
+    const canConcludeAgreement = numCurRound >= minRounds && !allAggressive;
+
     // Condition A: Explicit or Numerical Agreement
     const isExplicitAccept = action === 'ACCEPT' || agreementReached === true;
     const hasSufficientOffers = typeof allHaveOffered === 'boolean'
@@ -964,7 +984,7 @@ if (
       ? (isRoundEnd && hasSufficientOffers && currentGap <= threshold && currentGap >= 0)
       : (hasSufficientOffers && currentGap <= threshold && currentGap >= 0);
 
-    if (isExplicitAccept || isGapConverged) {
+    if (canConcludeAgreement && (isExplicitAccept || isGapConverged)) {
       return {
         shouldStop: true,
         finalStatus: 'COMPLETED',
@@ -983,14 +1003,14 @@ if (action === 'REJECT') {
   };
 }
     // Condition C: Max Rounds Reached at End of Round
-    const numMaxRounds = Number(maxRounds || 10);
-    const numCurRound = Number(currentRound || 1);
     if ((isRoundEnd && numCurRound >= numMaxRounds) || numCurRound > numMaxRounds) {
       return {
         shouldStop: true,
         finalStatus: 'DEADLOCK',
         agreedValue: null,
-        deadlockReason: 'The maximum number of negotiation rounds was reached without an agreement.',
+        deadlockReason: allAggressive
+          ? 'All parties held unyielding aggressive positions, preventing any concession.'
+          : 'The maximum number of negotiation rounds was reached without an agreement.',
         orchestratorMessage: `Maximum round limit (${numMaxRounds}) reached without agreement. Final gap remained ₹${Number(currentGap || 0).toLocaleString()}. Negotiation terminated in Deadlock.`,
       };
     }

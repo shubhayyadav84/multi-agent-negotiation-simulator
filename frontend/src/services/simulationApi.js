@@ -363,7 +363,9 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
 
   const firstAgent = effectiveAgents[0];
   const secondAgent = effectiveAgents[1] || effectiveAgents[0];
-  const initialGap = Math.abs((firstAgent.current_offer || 0) - (secondAgent.current_offer || 0));
+  const initialGap = scenarioId === 'project-budget'
+    ? Math.max(0, effectiveAgents.reduce((sum, a) => sum + (Number(a.current_offer) || 0), 0) - 1000000)
+    : Math.abs((firstAgent.current_offer || 0) - (secondAgent.current_offer || 0));
 
   const now = new Date();
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -425,6 +427,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
     max_rounds: maxRounds || config.defaultMaxRounds,
     current_gap: initialGap,
     agreement_likelihood: 50,
+    targetAgreementRound: 5 + Math.floor(Math.random() * 4),
     agents: effectiveAgents,
     messages: initialMessages,
     offers: initialOffers,
@@ -509,33 +512,85 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     moveMessage = customMove.message || 'I propose our revised allocation.';
     moveOffer = customMove.offer_value !== undefined ? customMove.offer_value : activeAgent.current_offer;
     moveAction = customMove.action || 'COUNTER_OFFER';
+    if (customMove.terms) {
+      sim.humanProposedTerms = { ...customMove.terms };
+    }
   } else {
     // Generate realistic AI moves with natural concession
     const rNum = Number(sim.current_round || 1);
     const progress = Math.min(1.0, (rNum - 1) / Math.max(1, maxR - 3));
 
+    // Determine target agreement round randomly (between 5 and 9) if not already chosen
+    if (!sim.targetAgreementRound) {
+      sim.targetAgreementRound = 5 + Math.floor(Math.random() * 4);
+    }
+    const targetRound = sim.targetAgreementRound;
+
+    const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
+    const canConcludeAgreement = rNum >= 5 && !allAggressive;
+
     if (sim.scenario_id === 'project-budget') {
       const isEng = (activeAgent.id || '').includes('engineering') || (activeAgent.role || '').toLowerCase().includes('engineering');
       const isMkt = (activeAgent.id || '').includes('marketing') || (activeAgent.role || '').toLowerCase().includes('marketing');
-      const roundConcession = Math.min(sim.current_round * 10000, 40000);
 
-      const engVal = 450000 - (isEng ? roundConcession : Math.round(roundConcession * 0.8));
-      const mktVal = 350000 - (isMkt ? roundConcession : Math.round(roundConcession * 0.7));
-      const prodVal = 300000 - (!isEng && !isMkt ? roundConcession : Math.round(roundConcession * 0.6));
+      // Check if there is a human proposal on the table
+      const humanTerms = sim.humanProposedTerms;
+      const hasHumanSplit = Boolean(humanTerms && (humanTerms.total || humanTerms.engineering || humanTerms.marketing || humanTerms.product));
+
+      // Random jitter per turn to ensure round variation
+      const jitter = Math.floor((Math.random() - 0.5) * 6000);
+      const engConcession = allAggressive ? Math.min(rNum * 1500, 8000) : Math.min(rNum * 7000 + jitter, 40000);
+      const mktConcession = allAggressive ? Math.min(rNum * 1200, 6000) : Math.min(rNum * 5500 - jitter, 25000);
+      const prodConcession = allAggressive ? Math.min(rNum * 1000, 5000) : Math.min(rNum * 4500 + jitter, 35000);
+
+      const engVal = Math.round(450000 - engConcession);
+      const mktVal = Math.round(350000 - mktConcession);
+      const prodVal = Math.round(300000 - prodConcession);
       const totalDemanded = engVal + mktVal + prodVal;
 
-      if (totalDemanded <= 1000000) {
-        moveAction = 'ACCEPT';
-        moveOffer = isEng ? 410000 : (isMkt ? 325000 : 265000);
-        moveMessage = `We agree to finalize the balanced ₹1,000,000 tripartite allocation: Engineering ₹410,000, Marketing ₹325,000, Product AI ₹265,000.`;
-      } else {
-        moveOffer = isEng ? engVal : (isMkt ? mktVal : prodVal);
-        if (isEng) {
-          moveMessage = `Engineering proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Platform reliability remains vital.`;
-        } else if (isMkt) {
-          moveMessage = `Marketing proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Securing enterprise customer acquisition capital is essential.`;
+      if (hasHumanSplit) {
+        const hEng = Number(humanTerms.engineering) || 410000;
+        const hMkt = Number(humanTerms.marketing) || 325000;
+        const hProd = Number(humanTerms.product) || 265000;
+        const hTotal = Number(humanTerms.total) || (hEng + hMkt + hProd);
+
+        // If human proposal exceeds ₹10,00,000, reject and counter
+        if (hTotal > 1000000) {
+          moveOffer = isEng ? engVal : (isMkt ? mktVal : prodVal);
+          moveAction = 'COUNTER_OFFER';
+          moveMessage = `Your proposed allocation total of ₹${hTotal.toLocaleString()} exceeds the strict ₹10,00,000 ceiling. We counter with: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}).`;
         } else {
-          moveMessage = `Product AI proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Balancing GenAI model development and shared capacities.`;
+          // Check if each department gets at least minimum feasible funding
+          const engOk = hEng >= 390000;
+          const mktOk = hMkt >= 300000;
+          const prodOk = hProd >= 250000;
+          const isSatisfactory = engOk && mktOk && prodOk;
+
+          if (canConcludeAgreement && isSatisfactory && rNum >= targetRound) {
+            moveAction = 'ACCEPT';
+            moveOffer = isEng ? hEng : (isMkt ? hMkt : hProd);
+            moveMessage = `We agree to finalize your proposed allocation within the ₹10,00,000 ceiling: Engineering ₹${hEng.toLocaleString()}, Marketing ₹${hMkt.toLocaleString()}, Product AI ₹${hProd.toLocaleString()}.`;
+          } else {
+            moveOffer = isEng ? engVal : (isMkt ? mktVal : prodVal);
+            moveAction = 'COUNTER_OFFER';
+            const unsatisfiedDept = !engOk ? 'Engineering' : (!mktOk ? 'Marketing' : 'Product AI');
+            moveMessage = `The proposed allocation for ${unsatisfiedDept} does not meet our minimum operational requirements. We counter: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}).`;
+          }
+        }
+      } else {
+        if (canConcludeAgreement && totalDemanded <= 1000000 && rNum >= targetRound) {
+          moveAction = 'ACCEPT';
+          moveOffer = isEng ? 410000 : (isMkt ? 325000 : 265000);
+          moveMessage = `We agree to finalize the balanced ₹1,000,000 tripartite allocation: Engineering ₹410,000, Marketing ₹325,000, Product AI ₹265,000.`;
+        } else {
+          moveOffer = isEng ? engVal : (isMkt ? mktVal : prodVal);
+          if (isEng) {
+            moveMessage = `Engineering proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Platform reliability remains vital.`;
+          } else if (isMkt) {
+            moveMessage = `Marketing proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Securing enterprise customer acquisition capital is essential.`;
+          } else {
+            moveMessage = `Product AI proposes allocation: Engineering ₹${engVal.toLocaleString()}, Marketing ₹${mktVal.toLocaleString()}, Product AI ₹${prodVal.toLocaleString()} (Total ₹${totalDemanded.toLocaleString()}). Balancing GenAI model development and shared capacities.`;
+          }
         }
       }
     } else if (sim.scenario_id === 'job-offer') {
@@ -543,12 +598,15 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       const cpAgent = agents.find(a => a !== activeAgent);
       const cpPersonality = (cpAgent?.personality || '').toLowerCase();
       const myPersonality = (activeAgent.personality || '').toLowerCase();
-      const isAggressiveMatch = cpPersonality.includes('aggressive') || myPersonality.includes('aggressive');
+      const isAggressiveMatch = cpPersonality.includes('aggressive') && myPersonality.includes('aggressive');
+      const jitter = Math.floor((Math.random() - 0.5) * 2000);
 
       if (isCandidate) {
-        const candidateOffer = Math.round(175000 - progress * 10000);
+        const candidateOffer = allAggressive
+          ? Math.max(170000, Math.round(175000 - rNum * 500))
+          : Math.max(162000, Math.round(175000 - progress * 10000 + jitter));
         const recruiterOffer = cpAgent?.current_offer || 152000;
-        if (recruiterOffer >= candidateOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(candidateOffer - recruiterOffer) <= 2500)) {
+        if (canConcludeAgreement && rNum >= targetRound && (recruiterOffer >= candidateOffer || Math.abs(candidateOffer - recruiterOffer) <= 2000)) {
           moveAction = 'ACCEPT';
           moveOffer = recruiterOffer;
           moveMessage = `Thank you for working through these terms. I am pleased to accept the agreed base salary of ₹${Number(moveOffer).toLocaleString()}.`;
@@ -557,9 +615,11 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           moveMessage = `To help us align, I can adjust my compensation expectation to ₹${Number(moveOffer).toLocaleString()} base with full benefits.`;
         }
       } else {
-        const recruiterOffer = Math.round(152000 + progress * 12000);
+        const recruiterOffer = allAggressive
+          ? Math.min(158000, Math.round(152000 + rNum * 600))
+          : Math.min(166000, Math.round(152000 + progress * 12000 - jitter));
         const candidateOffer = cpAgent?.current_offer || 175000;
-        if (recruiterOffer >= candidateOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(candidateOffer - recruiterOffer) <= 2500)) {
+        if (canConcludeAgreement && rNum >= targetRound && (recruiterOffer >= candidateOffer || Math.abs(candidateOffer - recruiterOffer) <= 2000)) {
           moveAction = 'ACCEPT';
           moveOffer = candidateOffer;
           moveMessage = `We are pleased to extend and finalize an agreed compensation of ₹${Number(moveOffer).toLocaleString()} base salary. Welcome to the team!`;
@@ -570,16 +630,20 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       }
     } else {
       // Vendor Pricing Negotiation
-      const isBuyer = (activeAgent.role || '').toLowerCase().includes('buyer') || (activeAgent.role || '').toLowerCase().includes('procurement');
+      const roleStr = `${activeAgent.role || ''} ${activeAgent.name || ''} ${activeAgent.id || ''}`.toLowerCase();
+      const isBuyer = roleStr.includes('buyer') || roleStr.includes('procurement') || roleStr.includes('purchas') || roleStr.includes('client');
       const cpAgent = agents.find(a => a !== activeAgent);
       const cpPersonality = (cpAgent?.personality || '').toLowerCase();
       const myPersonality = (activeAgent.personality || '').toLowerCase();
-      const isAggressiveMatch = cpPersonality.includes('aggressive') || myPersonality.includes('aggressive');
+      const isAggressiveMatch = cpPersonality.includes('aggressive') && myPersonality.includes('aggressive');
+      const jitter = Math.floor((Math.random() - 0.5) * 1500);
 
       if (isBuyer) {
-        const buyerOffer = Math.round(95000 + progress * 4000);
+        const buyerOffer = allAggressive
+          ? Math.min(97000, Math.round(95000 + rNum * 300))
+          : Math.min(103000, Math.round(95000 + progress * 7000 + jitter));
         const sellerOffer = cpAgent?.current_offer || 110000;
-        if (sellerOffer <= buyerOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(sellerOffer - buyerOffer) <= 2000)) {
+        if (canConcludeAgreement && rNum >= targetRound && (sellerOffer <= buyerOffer || Math.abs(sellerOffer - buyerOffer) <= 1500)) {
           moveAction = 'ACCEPT';
           moveOffer = sellerOffer;
           moveMessage = `We accept your proposed contract valuation of ₹${Number(moveOffer).toLocaleString()} with Net-60 payment terms.`;
@@ -588,9 +652,11 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           moveMessage = `In the spirit of partnership, we adjust our purchasing offer to ₹${Number(moveOffer).toLocaleString()} under Net-60 terms.`;
         }
       } else {
-        const sellerOffer = Math.round(110000 - progress * 11000);
+        const sellerOffer = allAggressive
+          ? Math.max(106000, Math.round(110000 - rNum * 400))
+          : Math.max(100000, Math.round(110000 - progress * 9000 - jitter));
         const buyerOffer = cpAgent?.current_offer || 95000;
-        if (buyerOffer >= sellerOffer || (!isAggressiveMatch && rNum >= 6 && Math.abs(sellerOffer - buyerOffer) <= 2000)) {
+        if (canConcludeAgreement && rNum >= targetRound && (buyerOffer >= sellerOffer || Math.abs(sellerOffer - buyerOffer) <= 1500)) {
           moveAction = 'ACCEPT';
           moveOffer = buyerOffer;
           moveMessage = `We are pleased to accept your proposed contract value of ₹${Number(moveOffer).toLocaleString()} with Net-60 terms and four-week delivery.`;
@@ -604,6 +670,29 @@ function advanceLocalSimulation(simulationId, customMove = null) {
 
   // Update agent offer
   activeAgent.current_offer = moveOffer;
+
+  // Append offer to history
+  const updatedOffers = Array.isArray(sim.offers) ? [...sim.offers] : [];
+  if (moveOffer !== null && moveOffer !== undefined) {
+    updatedOffers.push({
+      round_number: sim.current_round,
+      agent_role: activeAgent.role,
+      agent_name: activeAgent.name,
+      offer_value: moveOffer,
+      action: moveAction,
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  // Dynamic live gap calculation
+  let currentGapCalc = 0;
+  if (sim.scenario_id === 'project-budget') {
+    const totalAllocated = agents.reduce((sum, a) => sum + (Number(a.current_offer) || 0), 0);
+    currentGapCalc = Math.max(0, totalAllocated - 1000000);
+  } else {
+    const liveOffers = agents.map(a => Number(a.current_offer)).filter(v => !isNaN(v) && v > 0);
+    currentGapCalc = liveOffers.length >= 2 ? Math.abs(liveOffers[0] - liveOffers[1]) : 0;
+  }
 
   const newMessages = [
     ...(sim.messages || []),
@@ -645,7 +734,9 @@ function advanceLocalSimulation(simulationId, customMove = null) {
         sender_type: 'ORCHESTRATOR',
         sender_name: 'Orchestrator Agent',
         sender_role: 'Orchestrator',
-        message: `Maximum round limit (${maxR}) reached without agreement. Negotiation concluded in Deadlock.`,
+        message: allAggressive
+          ? `Maximum round limit (${maxR}) reached without agreement. All parties maintained aggressive unyielding stances. Negotiation concluded in Deadlock.`
+          : `Maximum round limit (${maxR}) reached without agreement. Negotiation concluded in Deadlock.`,
         action: 'STATUS',
         timestamp_label: timeStr,
       });
@@ -669,7 +760,13 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     current_round: nextRound,
     status,
     messages: newMessages,
-    agreement_likelihood: status === 'COMPLETED' ? 100 : Math.min(95, 50 + nextRound * 4),
+    offers: updatedOffers,
+    current_gap: currentGapCalc,
+    agreement_likelihood: status === 'COMPLETED'
+      ? 100
+      : (status === 'DEADLOCK' || allAggressive)
+      ? Math.max(10, Math.round(35 - (nextRound / maxR) * 20))
+      : Math.min(95, Math.round(40 + (nextRound / maxR) * 45)),
   };
 
   localSimulationsCache.set(simulationId, updatedSim);

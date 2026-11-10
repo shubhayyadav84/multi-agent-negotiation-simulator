@@ -62,7 +62,7 @@ const PRACTICE_SCENARIOS = [
     icon: PieChart,
     selectableSides: 'Lead Software Engineer, Product Manager, or Marketing Director',
     shortDescription:
-      'Step into an executive resource allocation summit. Negotiate as the Lead Software Engineer, Product Manager, or Marketing Director to defend your division\u2019s capital while reaching cross-functional compromise within a strict \u20b91 Crore ceiling.',
+      'Step into an executive resource allocation summit. Negotiate as the Lead Software Engineer, Product Manager, or Marketing Director to defend your division\u2019s capital while reaching cross-functional compromise within a strict \u20b910 Lakh ceiling.',
     participantText: '1 Human Lead vs AI Stakeholders',
     estimatedRounds: '12 Rounds Multilateral',
     keyLevers: ['Engineering Budget (₹)', 'Product & Design (₹)', 'Marketing & Growth (₹)'],

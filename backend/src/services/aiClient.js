@@ -80,13 +80,16 @@ function calculateConcessionRate(personality, roundNumber, maxRounds, counterpar
   const p = (personality || 'Collaborative').toLowerCase();
   const cp = (counterpartPersonality || 'Collaborative').toLowerCase();
 
+  // Natural random jitter to prevent deterministic round convergence patterns
+  const jitter = (Math.random() - 0.5) * 0.06;
+
   if (p.includes('aggressive')) {
-    const dampener = cp.includes('aggressive') ? 0.7 : 1.0;
-    return dampener * (0.04 * tNorm + 0.35 * Math.pow(tNorm, 3));
+    const dampener = cp.includes('aggressive') ? 0.35 : 0.7;
+    return Math.max(0, Math.min(0.45, dampener * (0.04 * tNorm + 0.30 * Math.pow(tNorm, 3)) + jitter * 0.5));
   } else if (p.includes('risk')) {
-    return Math.min(0.90, 0.25 + 0.65 * Math.pow(tNorm, 0.6));
+    return Math.max(0.05, Math.min(0.85, 0.20 + 0.60 * Math.pow(tNorm, 0.7) + jitter));
   } else {
-    return Math.min(0.75, 0.10 + 0.65 * tNorm);
+    return Math.max(0.05, Math.min(0.80, 0.10 + 0.65 * tNorm + jitter));
   }
 }
 
@@ -112,6 +115,11 @@ function generateDeterministicAgentMove({
   const cpPersonality = (counterpart?.personality || 'Collaborative').toLowerCase();
   const currency = scenario?.currency || '₹';
 
+  const isMyAggressive = personality.includes('aggressive');
+  const isCpAggressive = cpPersonality.includes('aggressive');
+  const isBothAggressive = isMyAggressive && isCpAggressive;
+  const canConcludeAgreement = roundNumber >= 5 && !isBothAggressive;
+
   const concessionRate = calculateConcessionRate(personality, roundNumber, maxRounds, cpPersonality);
   const hasPriorOffers = Array.isArray(history) && history.some((m) => m.offer_value || m.sender_type === 'AGENT' || m.sender_type === 'HUMAN');
   const counterpartOffer = hasPriorOffers && counterpart?.current_offer ? Number(counterpart.current_offer) : null;
@@ -125,27 +133,22 @@ function generateDeterministicAgentMove({
 
   // Scenario 1: Project Budget Allocation (3-agent multilateral)
   if (scenarioId.includes('budget') || scenarioTitle.includes('budget')) {
-    const engConcessionMax = personality.includes('aggressive') ? 25000 : 50000;
-    const mktConcessionMax = personality.includes('aggressive') ? 20000 : 40000;
-    const prodConcessionMax = personality.includes('aggressive') ? 15000 : 35000;
+    const engConcessionMax = personality.includes('aggressive') ? 12000 : 45000;
+    const mktConcessionMax = personality.includes('aggressive') ? 10000 : 35000;
+    const prodConcessionMax = personality.includes('aggressive') ? 8000 : 35000;
 
-    // Independent departmental demands starting at target:
-    // Engineering: 450k (target) -> 400k (concession)
-    // Marketing: 350k (target) -> 310k (concession)
-    // Product AI: 300k (target) -> 265k (concession)
-    const engReq = Math.round(450000 - concessionRate * engConcessionMax);
-    const mktReq = Math.round(350000 - concessionRate * mktConcessionMax);
+    const jitter = Math.floor((Math.random() - 0.5) * 4000);
+    const engReq = Math.round(450000 - concessionRate * engConcessionMax + jitter);
+    const mktReq = Math.round(350000 - concessionRate * mktConcessionMax - jitter);
     const prodReq = Math.round(300000 - concessionRate * prodConcessionMax);
     const totalDemanded = engReq + mktReq + prodReq;
 
     const isEng = agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software') || agentDescriptor.includes('vp-eng');
     const isMkt = agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo');
 
-    // Strict Project Budget rule: Agreement is reached ONLY if total departmental demands fit within the ₹10,00,000 ceiling!
-    // Never force acceptance if demands exceed the budget pool.
+    // Strict Project Budget rule: Agreement is reached ONLY if roundNumber >= 5, not aggressive deadlock, and total demands <= 1000000!
     const isBudgetWithinCeiling = totalDemanded <= 1000000;
-    const isLateFeasible = roundNumber >= 7 && (totalDemanded - 1000000) <= 0;
-    if (isBudgetWithinCeiling || isLateFeasible) {
+    if (canConcludeAgreement && isBudgetWithinCeiling && roundNumber >= 6) {
       // Balanced consensus allocation summing to exactly 1,000,000
       const engFinal = 410000;
       const mktFinal = 325000;
@@ -244,11 +247,11 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(salTarget - concessionRate * (salTarget - salLimit));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        if (counterpartOffer >= proposedOffer) {
+        if (canConcludeAgreement && counterpartOffer >= proposedOffer) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
-        } else if (counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        } else if (canConcludeAgreement && counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -290,11 +293,11 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(salTarget + concessionRate * (salLimit - salTarget));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        if (counterpartOffer <= proposedOffer) {
+        if (canConcludeAgreement && counterpartOffer <= proposedOffer) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
-        } else if (counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        } else if (canConcludeAgreement && counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -346,14 +349,14 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(priceTarget + concessionRate * (priceLimit - priceTarget));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        // Condition 1: Seller asks less than or equal to what buyer was offering (e.g. seller asks 70k when buyer offer is 95k)
-        if (counterpartOffer <= proposedOffer) {
+        // Condition 1: Seller asks less than or equal to what buyer was offering
+        if (canConcludeAgreement && counterpartOffer <= proposedOffer) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
         }
         // Condition 2: Seller asks within buyer ceiling with close gap or in late rounds
-        else if (counterpartOffer <= priceLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        else if (canConcludeAgreement && counterpartOffer <= priceLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -398,14 +401,14 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(priceTarget - concessionRate * (priceTarget - priceLimit));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        // Condition 1: Buyer offers more than or equal to what seller is asking (e.g. buyer offers 115k when seller ask is 110k)
-        if (counterpartOffer >= proposedOffer) {
+        // Condition 1: Buyer offers more than or equal to what seller is asking
+        if (canConcludeAgreement && counterpartOffer >= proposedOffer) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
         }
         // Condition 2: Buyer offers above floor with close gap or in late rounds
-        else if (counterpartOffer >= priceLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        else if (canConcludeAgreement && counterpartOffer >= priceLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;

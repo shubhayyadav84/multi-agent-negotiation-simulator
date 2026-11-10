@@ -1,4 +1,4 @@
-const { admin, isFirebaseAdminConfigured } = require('../config/firebaseAdmin');
+const { admin, getAdminAuth, isFirebaseAdminConfigured } = require('../config/firebaseAdmin');
 
 /**
  * Authentication Middleware
@@ -49,7 +49,11 @@ async function verifyFirebaseToken(req, res, next) {
   }
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(token, true); // checkRevoked = true
+    const auth = getAdminAuth();
+    if (!auth) {
+      throw new Error('Firebase Auth service is not ready');
+    }
+    const decodedToken = await auth.verifyIdToken(token, true); // checkRevoked = true
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email || null,

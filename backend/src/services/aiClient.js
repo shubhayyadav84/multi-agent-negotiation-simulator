@@ -101,7 +101,7 @@ function generateDeterministicAgentMove({
   agent,
   counterpart,
   roundNumber,
-  maxRounds = 10,
+  maxRounds = 12,
   currentOffer,
   history,
 }) {

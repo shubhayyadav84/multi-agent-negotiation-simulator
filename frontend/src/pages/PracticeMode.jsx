@@ -32,7 +32,7 @@ const PRACTICE_SCENARIOS = [
     shortDescription:
       'Negotiate from either side of the table: step in as the enterprise procurement buyer seeking volume discounts, or as the supplier defending profit margins and net payment terms.',
     participantText: '1 Human Negotiator vs 1 AI Agent',
-    estimatedRounds: '8 Rounds Dynamic',
+    estimatedRounds: '12 Rounds Dynamic',
     keyLevers: ['Unit Price (₹)', 'Payment Terms (Net Days)', 'Delivery SLA (Weeks)'],
     tacticalSkills: ['Anchoring & Framing', 'Volume Concessions', 'Contract Boundary Defense'],
   },

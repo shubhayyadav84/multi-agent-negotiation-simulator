@@ -232,7 +232,7 @@ class OrchestratorAgent {
     const preset = this.getScenarioPreset(scenarioId);
     const simId = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    const effectiveMaxRounds = maxRounds || preset.max_rounds || 10;
+    const effectiveMaxRounds = maxRounds || preset.max_rounds || (scenarioId === 'job-offer' ? 8 : 12);
     const humanCount = Array.isArray(customAgents)
       ? customAgents.filter((a) => a.personality === 'Human' || a.is_human === true).length
       : 0;

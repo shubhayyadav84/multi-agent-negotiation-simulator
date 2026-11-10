@@ -608,10 +608,11 @@ const NegotiationArena = () => {
           }
         }
 
+        const targetMaxRounds = currentScenarioId === 'job-offer' ? 8 : 12;
         const simData = await startSimulation(
           currentScenarioId,
           customAgents,
-          null,
+          targetMaxRounds,
           currentUser?.email || null,
           currentUser?.uid || null
         );
@@ -855,10 +856,11 @@ const NegotiationArena = () => {
         }
       }
 
+      const targetMaxRounds = currentScenarioId === 'job-offer' ? 8 : 12;
       const restarted = await startSimulation(
         currentScenarioId,
         customAgents,
-        null,
+        targetMaxRounds,
         currentUser?.email || null,
         currentUser?.uid || null
       );
@@ -870,10 +872,11 @@ const NegotiationArena = () => {
       }
     } catch (err) {
       console.warn('Restart failed, restarting fresh:', err);
+      const targetMaxRounds = currentScenarioId === 'job-offer' ? 8 : 12;
       const fresh = await startSimulation(
         currentScenarioId,
         null,
-        null,
+        targetMaxRounds,
         currentUser?.email || null,
         currentUser?.uid || null
       );
@@ -1039,7 +1042,7 @@ const NegotiationArena = () => {
   ]);
 
   const currentRound = simulation?.current_round || 1;
-  const maxRounds = simulation?.max_rounds || currentScenarioObj.maxRounds || 10;
+  const maxRounds = simulation?.max_rounds || currentScenarioObj.maxRounds || (currentScenarioId === 'job-offer' ? 8 : 12);
   const roundProgress = Math.min(100, Math.round((currentRound / maxRounds) * 100));
 
   // Dynamic offers calculation from simulation.offers or messages

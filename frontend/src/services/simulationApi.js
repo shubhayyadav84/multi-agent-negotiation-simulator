@@ -54,7 +54,8 @@ export async function startSimulation(scenarioId = 'vendor-pricing', customAgent
     throw new Error(`Server returned ${res.status}`);
   } catch (err) {
     console.warn('[Simulation API] Backend unavailable or timed out, initializing clean scenario session at Round 1:', err.message);
-    const local = createLocalSimulation(scenarioId, customAgents, maxRounds || 10);
+    const localMaxRounds = maxRounds || (scenarioId === 'job-offer' ? 8 : 12);
+    const local = createLocalSimulation(scenarioId, customAgents, localMaxRounds);
     local.user_email = userEmail;
     local.user_id = userId;
     localSimulationsCache.set(local.id, local);
@@ -211,7 +212,7 @@ export async function restartSimulation(simulationId) {
  * Local fallback simulation generator that starts cleanly at Round 1
  * and dynamically adapts agents and messages to the chosen scenario.
  */
-function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = null, maxRounds = 10) {
+function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = null, maxRounds = null) {
   const scenarioConfigs = {
     'vendor-pricing': {
       title: 'Vendor Pricing Negotiation',
@@ -424,7 +425,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
     scenario_title: config.title,
     status: 'RUNNING',
     current_round: 1,
-    max_rounds: maxRounds || config.defaultMaxRounds,
+    max_rounds: maxRounds || config.defaultMaxRounds || (scenarioId === 'job-offer' ? 8 : 12),
     current_gap: initialGap,
     agreement_likelihood: 50,
     targetAgreementRound: 5 + Math.floor(Math.random() * 4),

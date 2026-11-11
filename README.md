@@ -6,9 +6,9 @@ An AI-powered negotiation simulation and training platform designed to model, st
 [![Vite](https://img.shields.io/badge/Vite-6.4.4-646CFF.svg)](https://vitejs.dev/)
 [![React Router](https://img.shields.io/badge/React_Router-7.3.0-CA4245.svg)](https://reactrouter.com/)
 [![Frontend Tests](https://img.shields.io/badge/Frontend_Tests-29%20Passed-10b981.svg)](#running-tests)
-[![Backend Tests](https://img.shields.io/badge/Backend_Tests-17%20Passed-10b981.svg)](#running-tests)
+[![Backend Tests](https://img.shields.io/badge/Backend_Tests-18%20Passed-10b981.svg)](#running-tests)
 [![Decision Engine Tests](https://img.shields.io/badge/Decision_Tests-37%20Passed-10b981.svg)](#running-tests)
-[![Total Tests](https://img.shields.io/badge/Total_Tests-83%20Passed-10b981.svg)](#running-tests)
+[![Total Tests](https://img.shields.io/badge/Total_Tests-84%20Passed-10b981.svg)](#running-tests)
 [![Build](https://img.shields.io/badge/Build-Passing-success.svg)](#building-for-production)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -22,11 +22,20 @@ An AI-powered negotiation simulation and training platform designed to model, st
 | **Backend API** | Render | [https://negotiator-backend-28r5.onrender.com/](https://negotiator-backend-28r5.onrender.com/) |
 | **AI Reasoning Service** | Render | [https://negotiator-ai-service.onrender.com/](https://negotiator-ai-service.onrender.com/) |
 
+### 📊 Project Tracking & Quality Assurance Sheets
+
+| Document | Format / Platform | Link |
+| :--- | :--- | :--- |
+| **Unit Test Plan (UTP Document)** | Microsoft Excel (OneDrive) | [Open Unit Test Plan (UTP Document)](https://1drv.ms/x/c/0621623379395de3/IQCWiDddcN4ySaSbEOM_NmFZAVYTsnC9HHxOFMsPz5YKRQ0?e=B5xOte) |
+| **Agile Sheet** | WPS Office Cloud | [Open Agile Sheet](https://ap.wps.com/cms/docs/d/cbCaeqxsrcGEsHic?platform=pc&refer=copylink) |
+| **Defect Tracking Sheet** | Microsoft Excel (OneDrive) | [Open Defect Tracking Sheet](https://1drv.ms/x/c/0621623379395de3/IQABdmzAnGNbQ5JnN693Bs8TAW2BxBMJMe9HM_bD_I_hxoM?e=tURwkt) |
+
 ---
 
 ## Table of Contents
 
 - [Live Deployments](#-live-deployments)
+- [Project Tracking & QA Sheets](#-project-tracking--quality-assurance-sheets)
 - [Project Description](#project-description)
 - [Milestone Architecture & Workflow](#milestone-architecture--workflow)
   - [4-Stage End-to-End Simulation Pipeline](#4-stage-end-to-end-simulation-pipeline)

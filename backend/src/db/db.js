@@ -88,6 +88,8 @@ const runMigrations = async () => {
     await pool.query(`
       ALTER TABLE simulations ADD COLUMN IF NOT EXISTS user_email VARCHAR(255);
       ALTER TABLE simulations ADD COLUMN IF NOT EXISTS user_id VARCHAR(128);
+      ALTER TABLE simulations ADD COLUMN IF NOT EXISTS deadlock_resolution JSONB;
+      ALTER TABLE simulations ADD COLUMN IF NOT EXISTS deadlock_reason TEXT;
       CREATE INDEX IF NOT EXISTS idx_simulations_user_email ON simulations(user_email);
       UPDATE simulations SET user_email = 'shubhayyadav84@gmail.com' WHERE user_email IS NULL;
     `);

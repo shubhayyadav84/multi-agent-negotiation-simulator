@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS simulations (
     agreement_likelihood INT DEFAULT 50,
     user_email VARCHAR(255),
     user_id VARCHAR(128),
+    deadlock_resolution JSONB,
+    deadlock_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

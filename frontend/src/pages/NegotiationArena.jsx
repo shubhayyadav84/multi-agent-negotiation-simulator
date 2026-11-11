@@ -44,6 +44,7 @@ import {
   startSimulation,
   getSimulationState,
   stepSimulation,
+  sendDeadlockAction,
   pauseSimulation,
   resumeSimulation,
   restartSimulation,
@@ -301,6 +302,136 @@ const NegotiationArena = () => {
   const [practiceMessage, setPracticeMessage] = useState('');
   const [practiceOfferValue, setPracticeOfferValue] = useState('');
   const [showPracticeReportModal, setShowPracticeReportModal] = useState(false);
+
+  // Universal Deadlock Resolution System state
+  const [isDeadlockCounterOpen, setIsDeadlockCounterOpen] = useState(false);
+  const [deadlockCounterPrice, setDeadlockCounterPrice] = useState('');
+  const [deadlockPaymentTerms, setDeadlockPaymentTerms] = useState('Net-45');
+  const [deadlockWorkArrangement, setDeadlockWorkArrangement] = useState('Hybrid (2 days remote)');
+  const [deadlockBudgetEng, setDeadlockBudgetEng] = useState(410000);
+  const [deadlockBudgetMkt, setDeadlockBudgetMkt] = useState(325000);
+  const [deadlockBudgetProd, setDeadlockBudgetProd] = useState(265000);
+  const [deadlockSubmitting, setDeadlockSubmitting] = useState(false);
+
+  useEffect(() => {
+    const propVal = simulation?.deadlock_resolution?.latest_proposal?.offer_value;
+    if (propVal && !deadlockCounterPrice) {
+      setDeadlockCounterPrice(propVal);
+    }
+  }, [simulation?.deadlock_resolution?.latest_proposal?.offer_value]);
+
+  const handleDeadlockAccept = async () => {
+    if (!simulation?.id || deadlockSubmitting) return;
+    setDeadlockSubmitting(true);
+    try {
+      const updated = await sendDeadlockAction(simulation.id, {
+        action: 'ACCEPT',
+        sender_role: humanAgent?.role || 'Human Participant',
+        message: 'I accept the compromise offer proposed by the Orchestrator.',
+      });
+      if (updated) {
+        setSimulation(updated);
+        setIsDeadlockCounterOpen(false);
+      }
+    } catch (err) {
+      console.error('Deadlock accept error:', err);
+    } finally {
+      setDeadlockSubmitting(false);
+    }
+  };
+
+  const handleDeadlockReject = async () => {
+    if (!simulation?.id || deadlockSubmitting) return;
+    setDeadlockSubmitting(true);
+    try {
+      const attempts = simulation.deadlock_resolution?.counter_offer_attempts || 0;
+      const confirmDeadlock = attempts >= 2;
+      const updated = await sendDeadlockAction(simulation.id, {
+        action: 'REJECT',
+        sender_role: humanAgent?.role || 'Human Participant',
+        message: 'I reject the compromise proposal.',
+        confirmDeadlock,
+      });
+      if (updated) {
+        setSimulation(updated);
+      }
+    } catch (err) {
+      console.error('Deadlock reject error:', err);
+    } finally {
+      setDeadlockSubmitting(false);
+    }
+  };
+
+  const handleDeadlockCounter = async () => {
+    if (!simulation?.id || deadlockSubmitting) return;
+    const attempts = simulation.deadlock_resolution?.counter_offer_attempts || 0;
+    if (attempts >= 2) return;
+
+    setDeadlockSubmitting(true);
+    try {
+      let offerVal = null;
+      let terms = {};
+      let msg = '';
+
+      if (currentScenarioId === 'project-budget') {
+        const eng = Number(deadlockBudgetEng || 0);
+        const mkt = Number(deadlockBudgetMkt || 0);
+        const prod = Number(deadlockBudgetProd || 0);
+        const total = eng + mkt + prod;
+        if (total !== 1000000) {
+          alert(`Total budget must sum strictly to ₹10,00,000 (Current total: ₹${total.toLocaleString()}).`);
+          setDeadlockSubmitting(false);
+          return;
+        }
+        offerVal = total;
+        terms = {
+          engineering: eng,
+          marketing: mkt,
+          product: prod,
+          engineeringFunding: eng,
+          marketingFunding: mkt,
+          productAIFunding: prod,
+          total,
+        };
+        msg = `Deadlock counter-offer (Attempt ${attempts + 1} of 2): Proposing Engineering ₹${eng.toLocaleString()}, Marketing ₹${mkt.toLocaleString()}, Product AI ₹${prod.toLocaleString()} totaling ₹10,00,000.`;
+      } else if (currentScenarioId === 'job-offer') {
+        const sal = Number(deadlockCounterPrice || 165000);
+        offerVal = sal;
+        terms = {
+          salary: sal,
+          baseSalary: sal,
+          work_arrangement: deadlockWorkArrangement || 'Hybrid (2 days remote)',
+        };
+        msg = `Deadlock counter-offer (Attempt ${attempts + 1} of 2): Proposing ₹${sal.toLocaleString()} base salary with ${deadlockWorkArrangement || 'Hybrid remote flexibility'}.`;
+      } else {
+        const pr = Number(deadlockCounterPrice || 102500);
+        offerVal = pr;
+        terms = {
+          unitPrice: pr,
+          contract_value: pr,
+          payment_terms: deadlockPaymentTerms || 'Net-45',
+        };
+        msg = `Deadlock counter-offer (Attempt ${attempts + 1} of 2): Proposing ₹${pr.toLocaleString()} contract value under ${deadlockPaymentTerms || 'Net-45'} payment terms.`;
+      }
+
+      const updated = await sendDeadlockAction(simulation.id, {
+        action: 'COUNTER_OFFER',
+        sender_role: humanAgent?.role || 'Human Participant',
+        offer_value: offerVal,
+        terms,
+        message: msg,
+      });
+
+      if (updated) {
+        setSimulation(updated);
+        setIsDeadlockCounterOpen(false);
+      }
+    } catch (err) {
+      console.error('Deadlock counter error:', err);
+    } finally {
+      setDeadlockSubmitting(false);
+    }
+  };
 
   const [speakingMessageId, setSpeakingMessageId] = useState(null);
 
@@ -1105,6 +1236,57 @@ const NegotiationArena = () => {
         </div>
       )}
 
+      {/* Universal Deadlock Active Notification Banner */}
+      {Boolean(simulation?.deadlock_resolution?.active) && !isTerminated && (
+        <div className="arena-outcome-banner banner-deadlock-resolution" style={{
+          background: '#fffbeb',
+          border: '1.5px solid #f59e0b',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          marginBottom: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 12px rgba(245, 158, 11, 0.12)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <AlertCircle size={24} style={{ color: '#d97706', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 800, color: '#92400e', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>⚠️ DEADLOCK DETECTED</span>
+                <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '6px', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}>
+                  Compromise Proposal Active
+                </span>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#78350f', marginTop: '3px' }}>
+                {simulation.deadlock_resolution.reason || 'Participants reached an impasse without meaningful concessions.'}
+              </div>
+            </div>
+          </div>
+          {isPracticeMode ? (
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '4px 10px', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                Counter-Offer Attempts: {simulation.deadlock_resolution.counter_offer_attempts || 0}/2
+              </span>
+              <span style={{ fontSize: '0.72rem', color: '#b45309' }}>
+                {(simulation.deadlock_resolution.counter_offer_attempts || 0) === 1
+                  ? 'Only 1 counter-offer attempt remaining'
+                  : (simulation.deadlock_resolution.counter_offer_attempts || 0) >= 2
+                  ? 'Maximum 2 counter-offer attempts reached'
+                  : '2 attempts available'}
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fef3c7', padding: '6px 12px', borderRadius: '8px', border: '1px solid #fde68a' }}>
+              <Loader2 size={16} className="spin-icon" style={{ color: '#b45309' }} />
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#92400e' }}>
+                AI Agents Evaluating Compromise...
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* In-page Negotiation Outcome Message (NO popup modal, NO Scenario Selection button) */}
       {isTerminated && (
         <div className={`arena-outcome-banner ${isDeadlock ? 'banner-deadlock' : 'banner-completed'}`}>
@@ -1507,6 +1689,249 @@ const NegotiationArena = () => {
               <span>
                 Simulation is running — AI agents are negotiating automatically. No manual input is required.
               </span>
+            </div>
+          )}
+
+          {/* Practice Mode Deadlock Resolution Control Card */}
+          {isPracticeMode && Boolean(simulation?.deadlock_resolution?.active) && !isTerminated && (
+            <div className="arena-deadlock-card">
+              <div className="arena-deadlock-header">
+                <div className="arena-deadlock-header-left">
+                  <Scale size={20} style={{ color: '#d97706' }} />
+                  <h3 className="arena-deadlock-title">
+                    Orchestrator Compromise Resolution
+                  </h3>
+                </div>
+                <div className={`arena-deadlock-attempt-badge ${
+                  (simulation.deadlock_resolution.counter_offer_attempts || 0) >= 2 ? 'attempt-warning' : ''
+                }`}>
+                  <ArrowRightLeft size={13} />
+                  <span>Counter-Offer Attempts: {simulation.deadlock_resolution.counter_offer_attempts || 0}/2</span>
+                </div>
+              </div>
+
+              {/* Suggested Compromise Details */}
+              {simulation.deadlock_resolution?.latest_proposal && (
+                <div className="arena-deadlock-compromise-details">
+                  <p className="arena-deadlock-summary-text">
+                    ⚖️ <strong>Proposed Compromise:</strong> {simulation.deadlock_resolution.latest_proposal.summary}
+                  </p>
+                  {simulation.deadlock_resolution.latest_proposal.terms && (
+                    <div className="arena-deadlock-terms-grid">
+                      {Object.entries(simulation.deadlock_resolution.latest_proposal.terms)
+                        .filter(([k]) => !['terms', 'distribution', 'currency'].includes(k))
+                        .map(([key, val]) => (
+                          <div key={key} className="arena-deadlock-term-item">
+                            <span className="arena-deadlock-term-key">{key.replace(/_/g, ' ')}</span>
+                            <span className="arena-deadlock-term-val">
+                              {typeof val === 'number' ? `₹${val.toLocaleString()}` : String(val)}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mandatory User Instruction */}
+              <div className="arena-deadlock-instruction-banner">
+                <Info size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>
+                  The negotiation has reached a deadlock. The Orchestrator has proposed a compromise offer. You can <strong>ACCEPT</strong> the offer, <strong>REJECT</strong> it, or submit a <strong>COUNTER-OFFER</strong>. You have a maximum of 2 counter-offer attempts to reach an agreement.
+                </span>
+              </div>
+
+              {/* Attempt status alert */}
+              {(simulation.deadlock_resolution.counter_offer_attempts || 0) === 1 && (
+                <div style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 600, marginBottom: '10px' }}>
+                  ⚠️ You have submitted 1 counter-offer. <strong>Only 1 counter-offer attempt remains.</strong>
+                </div>
+              )}
+              {(simulation.deadlock_resolution.counter_offer_attempts || 0) >= 2 && (
+                <div style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: 600, marginBottom: '10px' }}>
+                  ⛔ Maximum 2 counter-offer attempts reached. You can only <strong>ACCEPT</strong> or <strong>REJECT</strong> the latest proposal.
+                </div>
+              )}
+
+              {/* Action Buttons: ACCEPT, REJECT, COUNTER-OFFER */}
+              <div className="arena-deadlock-actions-row">
+                <button
+                  type="button"
+                  className="btn-deadlock-action btn-deadlock-accept"
+                  disabled={deadlockSubmitting}
+                  onClick={handleDeadlockAccept}
+                  title="Accept the compromise offer"
+                >
+                  <CheckCircle2 size={16} />
+                  <span>ACCEPT OFFER</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-deadlock-action btn-deadlock-reject"
+                  disabled={deadlockSubmitting}
+                  onClick={handleDeadlockReject}
+                  title="Reject the compromise offer"
+                >
+                  <XCircle size={16} />
+                  <span>REJECT OFFER</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-deadlock-action btn-deadlock-counter"
+                  disabled={deadlockSubmitting || (simulation.deadlock_resolution.counter_offer_attempts || 0) >= 2}
+                  onClick={() => setIsDeadlockCounterOpen((prev) => !prev)}
+                  title={(simulation.deadlock_resolution.counter_offer_attempts || 0) >= 2 ? 'Maximum 2 counter-offers reached' : 'Submit a counter-offer'}
+                >
+                  <ArrowRightLeft size={16} />
+                  <span>COUNTER-OFFER</span>
+                </button>
+              </div>
+
+              {/* Scenario-Specific Counter-Offer Drawer */}
+              {isDeadlockCounterOpen && (simulation.deadlock_resolution.counter_offer_attempts || 0) < 2 && (
+                <div className="arena-deadlock-counter-drawer">
+                  <div className="arena-deadlock-drawer-header">
+                    <span>Submit Counter-Offer (Attempt {(simulation.deadlock_resolution.counter_offer_attempts || 0) + 1} of 2)</span>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                      onClick={() => setIsDeadlockCounterOpen(false)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {currentScenarioId === 'project-budget' ? (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Engineering (₹)</label>
+                          <input
+                            type="number"
+                            className="arena-deadlock-input-field"
+                            value={deadlockBudgetEng}
+                            onChange={(e) => setDeadlockBudgetEng(Number(e.target.value))}
+                            step="5000"
+                          />
+                        </div>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Marketing (₹)</label>
+                          <input
+                            type="number"
+                            className="arena-deadlock-input-field"
+                            value={deadlockBudgetMkt}
+                            onChange={(e) => setDeadlockBudgetMkt(Number(e.target.value))}
+                            step="5000"
+                          />
+                        </div>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Product AI (₹)</label>
+                          <input
+                            type="number"
+                            className="arena-deadlock-input-field"
+                            value={deadlockBudgetProd}
+                            onChange={(e) => setDeadlockBudgetProd(Number(e.target.value))}
+                            step="5000"
+                          />
+                        </div>
+                      </div>
+                      {(() => {
+                        const currentTotal = Number(deadlockBudgetEng || 0) + Number(deadlockBudgetMkt || 0) + Number(deadlockBudgetProd || 0);
+                        const isValid = currentTotal === 1000000;
+                        return (
+                          <div style={{
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            marginTop: '6px',
+                            color: isValid ? '#16a34a' : '#dc2626'
+                          }}>
+                            Total Allocated: ₹{currentTotal.toLocaleString()} / ₹10,00,000 {isValid ? '✓ Valid (10 Lakh)' : `(${currentTotal < 1000000 ? `₹${(1000000 - currentTotal).toLocaleString()} under` : `₹${(currentTotal - 1000000).toLocaleString()} over`})`}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : currentScenarioId === 'job-offer' ? (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Base Salary (₹)</label>
+                          <input
+                            type="number"
+                            className="arena-deadlock-input-field"
+                            value={deadlockCounterPrice}
+                            onChange={(e) => setDeadlockCounterPrice(e.target.value)}
+                            placeholder="e.g. 165000"
+                            step="1000"
+                          />
+                        </div>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Work Arrangement</label>
+                          <select
+                            className="arena-deadlock-input-field"
+                            value={deadlockWorkArrangement}
+                            onChange={(e) => setDeadlockWorkArrangement(e.target.value)}
+                          >
+                            <option value="Hybrid (2 days remote)">Hybrid (2 days remote)</option>
+                            <option value="Hybrid (3 days remote)">Hybrid (3 days remote)</option>
+                            <option value="Full Remote">Full Remote</option>
+                            <option value="On-site">On-site</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Contract Value / Price (₹)</label>
+                          <input
+                            type="number"
+                            className="arena-deadlock-input-field"
+                            value={deadlockCounterPrice}
+                            onChange={(e) => setDeadlockCounterPrice(e.target.value)}
+                            placeholder="e.g. 102500"
+                            step="500"
+                          />
+                        </div>
+                        <div className="arena-deadlock-input-group">
+                          <label className="arena-deadlock-input-label">Payment Terms</label>
+                          <select
+                            className="arena-deadlock-input-field"
+                            value={deadlockPaymentTerms}
+                            onChange={(e) => setDeadlockPaymentTerms(e.target.value)}
+                          >
+                            <option value="Net-30">Net-30</option>
+                            <option value="Net-45">Net-45 (Balanced Compromise)</option>
+                            <option value="Net-60">Net-60</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="arena-deadlock-drawer-actions">
+                    <button
+                      type="button"
+                      className="btn-deadlock-action btn-deadlock-counter"
+                      disabled={deadlockSubmitting}
+                      onClick={handleDeadlockCounter}
+                    >
+                      {deadlockSubmitting ? <Loader2 size={14} className="spin-icon" /> : <ArrowRightLeft size={14} />}
+                      <span>Submit Attempt ({(simulation.deadlock_resolution.counter_offer_attempts || 0) + 1} of 2)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-deadlock-action"
+                      style={{ background: '#e2e8f0', color: '#475569' }}
+                      onClick={() => setIsDeadlockCounterOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2099,9 +2524,41 @@ const NegotiationArena = () => {
 
             <p className="practice-dev-text" style={{ fontSize: '0.92rem', lineHeight: '1.5', color: '#334155', margin: '0 0 16px 0' }}>
               {isDeadlock
-                ? `Negotiation reached an impasse in Round ${simulation?.current_round || 1}. Reason: ${simulation?.deadlock_reason || 'Participants were unable to converge within reservation thresholds.'}`
+                ? `Negotiation reached an impasse in Round ${simulation?.current_round || 1}. Reason: ${simulation?.deadlock_reason || simulation?.deadlock_resolution?.reason || 'Participants were unable to converge within reservation thresholds.'}`
                 : `Successfully concluded mutual terms between ${humanAgent?.name || 'Human Participant'} and ${opponentAgent?.name || 'AI Counterpart'} at ₹${Number(simulation?.agreement?.final_value || 0).toLocaleString()} under scenario guidelines.`}
             </p>
+
+            {/* Universal Deadlock Resolution Audit Section */}
+            {simulation?.deadlock_resolution && (
+              <div style={{
+                background: '#fffbeb',
+                border: '1px solid #fcd34d',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                fontSize: '0.82rem',
+                color: '#78350f'
+              }}>
+                <div style={{ fontWeight: 800, color: '#92400e', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Scale size={15} />
+                  <span>Deadlock Resolution Audit</span>
+                </div>
+                <div style={{ marginBottom: '4px' }}>
+                  <strong>Deadlock Reason:</strong> {simulation.deadlock_resolution.reason || simulation.deadlock_reason}
+                </div>
+                {simulation.deadlock_resolution.initial_compromise?.summary && (
+                  <div style={{ marginBottom: '4px' }}>
+                    <strong>Orchestrator Compromise:</strong> {simulation.deadlock_resolution.initial_compromise.summary}
+                  </div>
+                )}
+                <div style={{ marginBottom: '4px' }}>
+                  <strong>Counter-Offer Attempts:</strong> {simulation.deadlock_resolution.counter_offer_attempts || 0} / 2 attempts used
+                </div>
+                <div>
+                  <strong>Resolution Outcome:</strong> <span style={{ fontWeight: 700, color: simulation.deadlock_resolution.final_outcome === 'AGREEMENT_REACHED' ? '#15803d' : '#b91c1c' }}>{simulation.deadlock_resolution.final_outcome || (isCompleted ? 'AGREEMENT_REACHED' : 'DEADLOCK')}</span>
+                </div>
+              </div>
+            )}
 
             <div className="practice-dev-note" style={{ background: '#f1f5f9', padding: '12px 14px', borderRadius: '10px', fontSize: '0.82rem', color: '#475569', marginBottom: '20px' }}>
               <span>🎯 <strong>Tactical Feedback:</strong> {isDeadlock ? 'AI counterpart held a firm stance. Consider proposing concessions earlier or testing a collaborative opening move.' : 'Great job closing the gap! Your concessions effectively matched the counterpart archetype.'}</span>

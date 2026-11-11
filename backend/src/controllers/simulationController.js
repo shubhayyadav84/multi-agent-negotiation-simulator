@@ -124,8 +124,20 @@ async function advanceSimulationStep(req, res) {
       });
     }
 
-    const { humanMove, message, offer_value, action, terms, stance } = req.body || {};
-    const customMove = humanMove || (message ? { message, offer_value, action, terms, stance } : null);
+    const { humanMove, message, offer_value, action, terms, stance, isDeadlockAction } = req.body || {};
+    const customMove = humanMove || (message || action || offer_value !== undefined ? { message, offer_value, action, terms, stance, isDeadlockAction } : null);
+
+    // If deadlock resolution is active and action is a deadlock resolution decision
+    if (sim.deadlock_resolution?.active && (isDeadlockAction || ['ACCEPT', 'REJECT', 'COUNTER_OFFER', 'COUNTER'].includes((action || '').toUpperCase()))) {
+      const result = await orchestratorService.handleDeadlockAction(id, customMove);
+      return res.json({
+        success: true,
+        data: result.simulation,
+        deadlockResolution: result.deadlockResolution,
+        message: result.message,
+      });
+    }
+
     const result = await orchestratorService.advanceStep(id, customMove);
 
     return res.json({
@@ -135,10 +147,53 @@ async function advanceSimulationStep(req, res) {
       action: result.action,
       offerValue: result.offerValue,
       stoppingConditionMet: result.stoppingConditionMet,
+      deadlockInitiated: result.deadlockInitiated,
+      waitingForHuman: result.waitingForHuman,
       message: result.message,
     });
   } catch (err) {
     console.error('[Simulation Controller] Error in step:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+/**
+ * Handle Deadlock Resolution Action
+ * POST /api/simulations/:id/deadlock/action
+ */
+async function handleDeadlockResolutionAction(req, res) {
+  try {
+    const { id } = req.params;
+    const sim = await db.getSimulation(id);
+    if (!sim) {
+      return res.status(404).json({ success: false, error: 'Simulation not found' });
+    }
+
+    if (!isUserAuthorizedForSim(sim, req)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: You do not have permission to modify this simulation.',
+      });
+    }
+
+    const { action, offer_value, terms, message, sender_role, confirmDeadlock } = req.body || {};
+    const result = await orchestratorService.handleDeadlockAction(id, {
+      action,
+      offer_value,
+      terms,
+      message,
+      sender_role,
+      confirmDeadlock,
+    });
+
+    return res.json({
+      success: true,
+      data: result.simulation,
+      deadlockResolution: result.deadlockResolution,
+      message: result.message,
+    });
+  } catch (err) {
+    console.error('[Simulation Controller] Error in deadlock action:', err);
     return res.status(500).json({ success: false, error: err.message });
   }
 }
@@ -281,4 +336,5 @@ module.exports = {
   endSimulation,
   restartSimulation,
   exportSimulation,
+  handleDeadlockResolutionAction,
 };

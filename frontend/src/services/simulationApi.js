@@ -913,3 +913,280 @@ function advanceLocalSimulation(simulationId, customMove = null) {
   localSimulationsCache.set(simulationId, updatedSim);
   return updatedSim;
 }
+
+/**
+ * Universal Deadlock Resolution Action Dispatcher
+ * Submits ACCEPT, REJECT, or COUNTER-OFFER during deadlock resolution phase
+ */
+export async function sendDeadlockAction(simulationId, actionPayload) {
+  try {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/deadlock/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify(actionPayload),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data && json.data.id) {
+        localSimulationsCache.set(json.data.id, json.data);
+      }
+      return json.data;
+    }
+  } catch (err) {
+    console.warn('[Simulation API] sendDeadlockAction failed on backend, executing local fallback:', err.message);
+  }
+
+  return handleLocalDeadlockAction(simulationId, actionPayload);
+}
+
+function handleLocalDeadlockAction(simulationId, payload) {
+  let sim = localSimulationsCache.get(simulationId);
+  if (!sim) return null;
+
+  const { action, offer_value, terms = {}, message, sender_role, confirmDeadlock } = payload;
+  const resolution = sim.deadlock_resolution || {
+    active: true,
+    counter_offer_attempts: 0,
+    max_counter_offers: 2,
+    initial_compromise: { offer_value: 100000, terms: {} },
+    latest_proposal: { offer_value: 100000, terms: {} },
+    reason: 'Negotiation reached an impasse.',
+  };
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const messages = Array.isArray(sim.messages) ? [...sim.messages] : [];
+
+  if (action === 'ACCEPT') {
+    messages.push({
+      id: `msg_deadlock_accept_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'HUMAN',
+      sender_name: 'You',
+      sender_role: sender_role || 'Human Participant',
+      message: message || 'I accept the compromise offer proposed by the Orchestrator.',
+      action: 'ACCEPT',
+      timestamp_label: timeStr,
+    });
+
+    messages.push({
+      id: `msg_deadlock_ai_accept_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'AGENT',
+      sender_name: 'AI Counterpart',
+      sender_role: 'Counterpart',
+      message: 'We agree to the Orchestrator compromise terms and confirm acceptance.',
+      action: 'ACCEPT',
+      timestamp_label: timeStr,
+    });
+
+    messages.push({
+      id: `msg_deadlock_conclude_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'ORCHESTRATOR',
+      sender_name: 'Orchestrator Agent',
+      sender_role: 'Orchestrator',
+      message: 'Agreement Reached! All parties have accepted the compromise proposal. Negotiation concluded successfully.',
+      action: 'STATUS',
+      timestamp_label: timeStr,
+    });
+
+    resolution.active = false;
+    resolution.status = 'RESOLVED';
+    resolution.final_outcome = 'AGREEMENT_REACHED';
+
+    const updated = {
+      ...sim,
+      status: 'AGREEMENT_REACHED',
+      current_gap: 0,
+      agreement_likelihood: 100,
+      deadlock_resolution: resolution,
+      messages,
+      agreement: {
+        final_value: resolution.latest_proposal?.offer_value || offer_value || 100000,
+        terms: resolution.latest_proposal?.terms || terms,
+        outcome: 'AGREEMENT_REACHED',
+      },
+    };
+    localSimulationsCache.set(simulationId, updated);
+    return updated;
+  }
+
+  if (action === 'REJECT') {
+    messages.push({
+      id: `msg_deadlock_reject_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'HUMAN',
+      sender_name: 'You',
+      sender_role: sender_role || 'Human Participant',
+      message: message || 'I reject the compromise proposal.',
+      action: 'REJECT',
+      timestamp_label: timeStr,
+    });
+
+    if (confirmDeadlock || resolution.counter_offer_attempts >= resolution.max_counter_offers) {
+      messages.push({
+        id: `msg_deadlock_final_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: 'The compromise proposal was rejected. Negotiation terminated in Deadlock.',
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+
+      resolution.active = false;
+      resolution.status = 'DEADLOCK';
+      resolution.final_outcome = 'DEADLOCK';
+
+      const updated = {
+        ...sim,
+        status: 'DEADLOCK',
+        agreement_likelihood: 0,
+        deadlock_resolution: resolution,
+        messages,
+      };
+      localSimulationsCache.set(simulationId, updated);
+      return updated;
+    }
+
+    resolution.status = 'REJECTED_AWAITING_COUNTER';
+    const updated = {
+      ...sim,
+      deadlock_resolution: resolution,
+      messages,
+    };
+    localSimulationsCache.set(simulationId, updated);
+    return updated;
+  }
+
+  if (action === 'COUNTER_OFFER') {
+    const attempts = (resolution.counter_offer_attempts || 0) + 1;
+    resolution.counter_offer_attempts = attempts;
+
+    messages.push({
+      id: `msg_deadlock_counter_${Date.now()}`,
+      round_number: sim.current_round,
+      sender_type: 'HUMAN',
+      sender_name: 'You',
+      sender_role: sender_role || 'Human Participant',
+      message: message || `Counter-offer (Attempt ${attempts} of 2): proposing ${offer_value ? '₹' + Number(offer_value).toLocaleString() : 'revised terms'}.`,
+      offer_value,
+      terms,
+      action: 'COUNTER_OFFER',
+      timestamp_label: timeStr,
+    });
+
+    const numOffer = Number(offer_value);
+    const initialOffer = Number(resolution.initial_compromise?.offer_value || 100000);
+    const isReasonable = numOffer && Math.abs(numOffer - initialOffer) <= initialOffer * 0.12;
+
+    if (isReasonable) {
+      messages.push({
+        id: `msg_deadlock_ai_accept_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'AGENT',
+        sender_name: 'AI Counterpart',
+        sender_role: 'Counterpart',
+        message: `Your revised proposal of ₹${numOffer.toLocaleString()} is within our acceptable parameters. We accept.`,
+        offer_value: numOffer,
+        action: 'ACCEPT',
+        timestamp_label: timeStr,
+      });
+
+      messages.push({
+        id: `msg_deadlock_success_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `Agreement Reached! Counter-offer was accepted. Negotiation concluded successfully.`,
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+
+      resolution.active = false;
+      resolution.status = 'RESOLVED';
+      resolution.final_outcome = 'AGREEMENT_REACHED';
+
+      const updated = {
+        ...sim,
+        status: 'AGREEMENT_REACHED',
+        current_gap: 0,
+        agreement_likelihood: 100,
+        deadlock_resolution: resolution,
+        messages,
+        agreement: {
+          final_value: numOffer,
+          terms,
+          outcome: 'AGREEMENT_REACHED',
+        },
+      };
+      localSimulationsCache.set(simulationId, updated);
+      return updated;
+    } else {
+      if (attempts >= 2) {
+        messages.push({
+          id: `msg_deadlock_ai_reject_final_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'AGENT',
+          sender_name: 'AI Counterpart',
+          sender_role: 'Counterpart',
+          message: `We cannot accept this counter-offer. The terms remain outside our reservation threshold.`,
+          action: 'REJECT',
+          timestamp_label: timeStr,
+        });
+
+        messages.push({
+          id: `msg_deadlock_terminal_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: 'Orchestrator Agent',
+          sender_role: 'Orchestrator',
+          message: `Maximum 2 counter-offer attempts reached without agreement. Negotiation concluded in Deadlock.`,
+          action: 'STATUS',
+          timestamp_label: timeStr,
+        });
+
+        resolution.active = false;
+        resolution.status = 'DEADLOCK';
+        resolution.final_outcome = 'DEADLOCK';
+
+        const updated = {
+          ...sim,
+          status: 'DEADLOCK',
+          agreement_likelihood: 0,
+          deadlock_resolution: resolution,
+          messages,
+        };
+        localSimulationsCache.set(simulationId, updated);
+        return updated;
+      } else {
+        messages.push({
+          id: `msg_deadlock_ai_reject_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'AGENT',
+          sender_name: 'AI Counterpart',
+          sender_role: 'Counterpart',
+          message: `This counter-offer is outside our boundary. Please provide a more balanced concession. (1 counter-offer attempt remaining)`,
+          action: 'REJECT',
+          timestamp_label: timeStr,
+        });
+
+        resolution.status = 'AWAITING_DECISION';
+        const updated = {
+          ...sim,
+          deadlock_resolution: resolution,
+          messages,
+        };
+        localSimulationsCache.set(simulationId, updated);
+        return updated;
+      }
+    }
+  }
+
+  return sim;
+}

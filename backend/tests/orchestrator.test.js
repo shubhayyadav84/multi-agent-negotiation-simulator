@@ -405,6 +405,119 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     assert.strictEqual(pHumanMove.advanced, true);
   });
 
+  await test('15. Universal Deadlock Resolution: Dynamic scenario-independent proposals across all 3 scenarios and Practice Mode actions', async () => {
+    // A. Verify Compromise Proposal generation across all 3 scenarios
+    const vendorSim = { scenario_id: 'vendor-pricing', agents: [{ role: 'Buyer', current_offer: 95000 }, { role: 'Seller', current_offer: 110000 }] };
+    const jobSim = { scenario_id: 'job-offer', agents: [{ role: 'Recruiter', current_offer: 155000 }, { role: 'Candidate', current_offer: 175000 }] };
+    const budgetSim = { scenario_id: 'project-budget', agents: [{ role: 'Engineering Lead' }, { role: 'Marketing Lead' }, { role: 'Product AI Lead' }] };
+
+    const vendorProposal = orchestratorService.generateCompromiseProposal(vendorSim);
+    assert.ok(vendorProposal.detailed_terms.unitPrice, 'Vendor proposal must formulate unit price');
+    assert.ok(vendorProposal.detailed_terms.payment_terms.includes('Net-45'), 'Vendor proposal must formulate Net-45 payment terms');
+
+    const jobProposal = orchestratorService.generateCompromiseProposal(jobSim);
+    assert.ok(jobProposal.detailed_terms.baseSalary, 'Job proposal must formulate base salary');
+    assert.ok(jobProposal.detailed_terms.work_arrangement.includes('Hybrid'), 'Job proposal must formulate hybrid work arrangement');
+
+    const budgetProposal = orchestratorService.generateCompromiseProposal(budgetSim);
+    assert.strictEqual(budgetProposal.detailed_terms.total, 1000000, 'Budget proposal must sum strictly to ₹10,00,000');
+    assert.strictEqual(budgetProposal.detailed_terms.engineering + budgetProposal.detailed_terms.marketing + budgetProposal.detailed_terms.product, 1000000);
+
+    // B. Practice Mode Deadlock Actions (ACCEPT, REJECT, COUNTER-OFFER with max 2 attempts)
+    const practiceDeadlockSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'seller-rep', role: 'Sales Account Executive', personality: 'Aggressive' },
+        { id: 'buyer-user', role: 'Procurement Director', personality: 'Human', is_human: true },
+      ],
+    });
+
+    // Initiate deadlock resolution manually
+    await orchestratorService.initiateDeadlockResolution(practiceDeadlockSim.id, {
+      reason: 'Repeated stubborn positions',
+      type: 'UNCHANGED_OFFERS',
+    });
+
+    let currentSim = await db.getSimulation(practiceDeadlockSim.id);
+    assert.strictEqual(currentSim.deadlock_resolution.active, true);
+    assert.strictEqual(currentSim.deadlock_resolution.counter_offer_attempts, 0);
+
+    // Counter-Offer Attempt 1 (declined by AI because ₹85,000 is too far from compromise)
+    const counter1Result = await orchestratorService.handleDeadlockAction(practiceDeadlockSim.id, {
+      action: 'COUNTER_OFFER',
+      offer_value: 85000,
+      sender_role: 'Procurement Director',
+      message: 'Counter-offer 1: Proposing ₹85,000',
+    });
+    assert.strictEqual(counter1Result.deadlockResolution.counter_offer_attempts, 1);
+    assert.strictEqual(counter1Result.simulation.status, 'RUNNING');
+
+    // Counter-Offer Attempt 2 (declined by AI -> max attempts exhausted -> concludes with DEADLOCK)
+    const counter2Result = await orchestratorService.handleDeadlockAction(practiceDeadlockSim.id, {
+      action: 'COUNTER_OFFER',
+      offer_value: 86000,
+      sender_role: 'Procurement Director',
+      message: 'Counter-offer 2: Proposing ₹86,000',
+    });
+    assert.strictEqual(counter2Result.deadlockResolution.counter_offer_attempts, 2);
+    assert.strictEqual(counter2Result.simulation.status, 'DEADLOCK');
+
+    // Attempt 3 must be strictly blocked (max 2 counter-offers rule)
+    let attempt3Blocked = false;
+    try {
+      await orchestratorService.handleDeadlockAction(practiceDeadlockSim.id, {
+        action: 'COUNTER_OFFER',
+        offer_value: 101500,
+        sender_role: 'Procurement Director',
+        message: 'Attempt 3',
+      });
+    } catch (err) {
+      attempt3Blocked = true;
+      assert.ok(err.message.toLowerCase().includes('maximum') && err.message.includes('2'));
+    }
+    assert.strictEqual(attempt3Blocked, true, '3rd counter-offer must be rejected');
+
+    // Accept action concludes in AGREEMENT_REACHED
+    const acceptSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'recruiter', role: 'Hiring Director', personality: 'Collaborative' },
+        { id: 'candidate', role: 'Job Candidate', personality: 'Human', is_human: true },
+      ],
+    });
+    await orchestratorService.initiateDeadlockResolution(acceptSim.id, { reason: 'Impasse' });
+    const acceptResult = await orchestratorService.handleDeadlockAction(acceptSim.id, {
+      action: 'ACCEPT',
+      sender_role: 'Job Candidate',
+      message: 'I accept the compromise offer',
+    });
+    assert.strictEqual(acceptResult.simulation.status, 'AGREEMENT_REACHED');
+    assert.strictEqual(acceptResult.deadlockResolution.active, false);
+    assert.strictEqual(acceptResult.deadlockResolution.final_outcome, 'AGREEMENT_REACHED');
+  });
+
+  await test('16. Universal Deadlock Resolution: Fully automated AI resolution in Simulation Mode', async () => {
+    const aiSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'buyer', role: 'Buyer', personality: 'Collaborative' },
+        { id: 'seller', role: 'Seller', personality: 'Collaborative' },
+      ],
+    });
+
+    const result = await orchestratorService.initiateDeadlockResolution(aiSim.id, {
+      reason: 'AI stagnation',
+      type: 'UNCHANGED_OFFERS',
+    });
+
+    assert.strictEqual(result.status, 'AGREEMENT_REACHED', 'AI agents in simulation mode should automatically evaluate and conclude');
+    assert.strictEqual(result.deadlock_resolution.final_outcome, 'AGREEMENT_REACHED');
+    assert.strictEqual(result.deadlock_resolution.active, false);
+  });
+
   console.log(`\n========================================`);
   console.log(`Results: ${passedCount} Passed, ${failedCount} Failed`);
   console.log(`========================================\n`);

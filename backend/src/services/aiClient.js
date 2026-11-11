@@ -151,9 +151,9 @@ function generateDeterministicAgentMove({
     const isEng = agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software') || agentDescriptor.includes('vp-eng');
     const isMkt = agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo');
 
-    // Strict Project Budget rule: Agreement is reached ONLY if roundNumber >= 5, not aggressive deadlock, and within ceiling or late round stochastic consensus!
+    // Strict Project Budget rule: Agreement is reached if total budget demands sum to <= 1,000,000, or late round stochastic consensus!
     const isBudgetWithinCeiling = totalDemanded <= 1000000;
-    if (canConcludeAgreement && (isBudgetWithinCeiling || (roundNumber >= 7 && isStochasticallyReady))) {
+    if (isBudgetWithinCeiling || (canConcludeAgreement && roundNumber >= 7 && isStochasticallyReady)) {
       // Balanced consensus allocation summing to exactly 1,000,000
       const engFinal = 410000;
       const mktFinal = 325000;
@@ -252,7 +252,8 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(salTarget - concessionRate * (salTarget - salLimit));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        if (canConcludeAgreement && counterpartOffer >= proposedOffer && isStochasticallyReady) {
+        // Direct crossover: Recruiter offers more than or equal to candidate proposed ask or target
+        if (counterpartOffer >= proposedOffer || counterpartOffer >= salTarget) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -298,7 +299,8 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(salTarget + concessionRate * (salLimit - salTarget));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        if (canConcludeAgreement && counterpartOffer <= proposedOffer && isStochasticallyReady) {
+        // Direct crossover: Candidate asks less than or equal to recruiter proposed offer or target
+        if (counterpartOffer <= proposedOffer || counterpartOffer <= salTarget) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -354,8 +356,12 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(priceTarget + concessionRate * (priceLimit - priceTarget));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        // Buyer accepts seller offer when terms converge and stochastic check confirms alignment
-        if (canConcludeAgreement && (counterpartOffer <= proposedOffer || (counterpartOffer <= priceLimit && (counterpartOffer - proposedOffer) <= 1200)) && isStochasticallyReady) {
+        // Buyer accepts seller offer immediately if seller asks less than or equal to proposed offer or buyer target
+        if (counterpartOffer <= proposedOffer || counterpartOffer <= priceTarget) {
+          action = 'ACCEPT';
+          agreementReached = true;
+          proposedOffer = counterpartOffer;
+        } else if (canConcludeAgreement && (counterpartOffer <= priceLimit && (counterpartOffer - proposedOffer) <= 1200) && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -400,8 +406,12 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(priceTarget - concessionRate * (priceTarget - priceLimit));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        // Seller accepts buyer offer when terms converge and stochastic check confirms alignment
-        if (canConcludeAgreement && (counterpartOffer >= proposedOffer || (counterpartOffer >= priceLimit && (proposedOffer - counterpartOffer) <= 1200)) && isStochasticallyReady) {
+        // Seller accepts buyer offer immediately if buyer offers more than or equal to proposed offer or seller target
+        if (counterpartOffer >= proposedOffer || counterpartOffer >= priceTarget) {
+          action = 'ACCEPT';
+          agreementReached = true;
+          proposedOffer = counterpartOffer;
+        } else if (canConcludeAgreement && (counterpartOffer >= priceLimit && (proposedOffer - counterpartOffer) <= 1200) && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;

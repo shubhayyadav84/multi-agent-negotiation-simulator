@@ -89,11 +89,18 @@ STRATEGIC PERSONALITY DIRECTIVES:
   * Concede carefully across rounds to secure agreement without giving away margin prematurely. NEVER accept before Round 5.
 
 RULES & CONSTRAINTS:
-- STRICT MINIMUM 5 ROUNDS RULE: NEVER execute "ACCEPT" before Round 5 under any circumstances! Rounds 1, 2, 3, and 4 are strictly for active bargaining, counter-proposals, and probing trade-offs.
+- MATHEMATICAL CROSSOVER & DIRECT ACCEPTANCE RULE:
+  * If you are a Seller and the Buyer's offer is greater than or equal to your asking price/target, you MUST immediately choose "ACCEPT" and set "agreement_reached": true!
+  * If you are a Buyer and the Seller's offer is less than or equal to your target/budget, you MUST immediately choose "ACCEPT" and set "agreement_reached": true!
+  * If you are a Candidate and the Recruiter's offer is greater than or equal to your salary expectation, you MUST immediately choose "ACCEPT" and set "agreement_reached": true!
+  * If you are a Recruiter and the Candidate's expectation is less than or equal to your offer/budget, you MUST immediately choose "ACCEPT" and set "agreement_reached": true!
+  * If this is Project Budget Allocation and the total department requests sum to <= 1,000,000, you MUST immediately choose "ACCEPT" and set "agreement_reached": true!
+  * When any crossover condition above is satisfied, you MUST accept immediately regardless of round number (even in rounds 1-4).
+- STRICT MINIMUM 5 ROUNDS FOR NORMAL BARGAINING: When a gap remains (Buyer < Seller, Candidate > Recruiter, or Budget > 1,000,000), NEVER choose "ACCEPT" before Round 5! Rounds 1 through 4 are for active bargaining and progressive concessions.
 - RANDOMIZED, NON-DETERMINISTIC CONVERGENCE: Do NOT follow a fixed round pattern or always settle in Round 5 or 6! Every negotiation run must feel distinct and unpredictable. Vary your concessions and bargaining posture naturally so that agreement can occur at diverse rounds (e.g. Round 6, 7, 8, 9, 10, 11, or 12), or result in a deadlock if positions fail to align.
 - Check current Round ({round_number} of {max_rounds}):
-  * If round_number < 5: You MUST choose "OFFER" or "COUNTER_OFFER". "ACCEPT" is strictly prohibited before Round 5!
-  * If you are Aggressive: DO NOT accept in rounds 1 through 7 unless your target is met.
+  * If round_number < 5 and NO mathematical crossover has occurred: You MUST choose "OFFER" or "COUNTER_OFFER". "ACCEPT" is prohibited before Round 5 unless a direct crossover has occurred!
+  * If you are Aggressive: DO NOT accept in rounds 1 through 7 unless your target is met or crossed.
   * If both agents are Aggressive: DO NOT accept! Stand firm and keep countering through later rounds.
 - Never knowingly violate a stated hard constraint (e.g. Buyer payment_days >= 60).
 - For vendor-pricing: proposed_offer must include "price" (numeric), "payment_days" (numeric, >= 60 for buyer), and "delivery_weeks" (numeric).

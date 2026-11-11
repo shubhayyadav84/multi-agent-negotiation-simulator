@@ -1021,9 +1021,23 @@ class OrchestratorAgent {
       }
     }
 
-    const initialBuyerOffer = effectiveAgents[0]?.current_offer || effectiveAgents[0]?.target_value || 8000;
-    const initialSellerOffer = effectiveAgents[1]?.current_offer || effectiveAgents[1]?.target_value || 11000;
-    const initialGap = Math.abs(initialBuyerOffer - initialSellerOffer);
+    let initialGap = 0;
+    if (preset.id === 'project-budget') {
+      const sumTargets = effectiveAgents.reduce((sum, a) => sum + (Number(a.current_offer || a.target_value) || 0), 0);
+      initialGap = Math.max(0, sumTargets - 1000000);
+    } else if (preset.id === 'job-offer') {
+      const recruiter = effectiveAgents.find(a => `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('recruiter') || `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('hiring')) || effectiveAgents[0];
+      const candidate = effectiveAgents.find(a => a !== recruiter) || effectiveAgents[1];
+      const rTarget = Number(recruiter?.current_offer || recruiter?.target_value || 152000);
+      const cTarget = Number(candidate?.current_offer || candidate?.target_value || 175000);
+      initialGap = Math.max(0, cTarget - rTarget);
+    } else {
+      const buyer = effectiveAgents.find(a => `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('buyer') || `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('procurement')) || effectiveAgents[0];
+      const seller = effectiveAgents.find(a => a !== buyer) || effectiveAgents[1];
+      const bTarget = Number(buyer?.current_offer || buyer?.target_value || 95000);
+      const sTarget = Number(seller?.current_offer || seller?.target_value || 110000);
+      initialGap = Math.max(0, sTarget - bTarget);
+    }
 
     // Random target agreement round (min 5, up to effectiveMaxRounds)
     // Ensures every simulation concludes at a diverse, unpredictable round (e.g. 6, 7, 8, 9, 10, 11, 12)
@@ -1587,18 +1601,27 @@ if (deadlock.detected && !compromiseAlreadyAttempted) {
       minRounds: 5,
     });
 
-    // Guard: Agreement CANNOT be reached before Round 5, or when all agents are Aggressive!
-    if ((sim.current_round < 5 || allAggressive) && stoppingEvaluation.finalStatus === 'COMPLETED') {
-      stoppingEvaluation.shouldStop = false;
-      stoppingEvaluation.finalStatus = 'RUNNING';
-    }
+    // Check if an explicit ACCEPT was executed or a direct mathematical crossover occurred
+    const isExplicitOrCrossover = move.action === 'ACCEPT' ||
+      move.agreement_reached === true ||
+      (currentGap <= 0 && (sim.scenario_id === 'project-budget' ? allHaveOffered : bothHaveOffered));
 
-    // Guard for Practice Mode & Multilateral Negotiations:
-    // A round is not concluded until every participant in that round has taken their turn!
-    // Agreement CANNOT be reached mid-round while awaiting the human player or third agent.
-    if ((isPractice || agents.length > 2) && !isRoundEnd && stoppingEvaluation.finalStatus === 'COMPLETED') {
-      stoppingEvaluation.shouldStop = false;
-      stoppingEvaluation.finalStatus = 'RUNNING';
+    // Guard: Only natural gap-convergence (positive gap > 0) is gated by minRounds or mid-round completion.
+    // Explicit ACCEPT or Direct Mathematical Crossover (buyer >= seller, recruiter >= candidate, budget sum <= 10L)
+    // ALWAYS concludes immediately, even before round 5 and mid-round!
+    if (!isExplicitOrCrossover) {
+      if ((sim.current_round < 5 || allAggressive) && stoppingEvaluation.finalStatus === 'COMPLETED') {
+        stoppingEvaluation.shouldStop = false;
+        stoppingEvaluation.finalStatus = 'RUNNING';
+      }
+
+      // Guard for Practice Mode & Multilateral Negotiations:
+      // A round is not concluded until every participant in that round has taken their turn!
+      // Agreement CANNOT be reached mid-round while awaiting the human player or third agent.
+      if ((isPractice || agents.length > 2) && !isRoundEnd && stoppingEvaluation.finalStatus === 'COMPLETED') {
+        stoppingEvaluation.shouldStop = false;
+        stoppingEvaluation.finalStatus = 'RUNNING';
+      }
     }
     // Apply detected deadlock after the compromise attempt
 if (
@@ -1619,6 +1642,9 @@ if (
     if (stoppingEvaluation.shouldStop) {
       newStatus = stoppingEvaluation.finalStatus;
       likelihood = stoppingEvaluation.finalStatus === 'COMPLETED' ? 100 : 0;
+      if (stoppingEvaluation.finalStatus === 'COMPLETED') {
+        currentGap = 0;
+      }
 
       // Post Orchestrator Termination Announcement
       await db.addMessage({
@@ -1705,12 +1731,24 @@ if (
     const numMaxRounds = Number(maxRounds || 10);
     const numCurRound = Number(currentRound || 1);
 
-    // Rule 1: Minimum rounds required before an agreement can be finalized.
+    // Condition A: Explicit ACCEPT or Direct Agreement
+    // When an agent or human chooses ACCEPT, agreement is finalized IMMEDIATELY!
+    // This MUST NEVER be blocked by minRounds pacing, aggressive personality, or round guards.
+    const isExplicitAccept = action === 'ACCEPT' || agreementReached === true;
+    if (isExplicitAccept) {
+      return {
+        shouldStop: true,
+        finalStatus: 'COMPLETED',
+        agreedValue: settlementPrice,
+        orchestratorMessage: `Congratulations! All participating parties have successfully reached an agreement. The negotiation has been concluded.`,
+      };
+    }
+
+    // Condition B: Natural Gap Convergence (positive gap converging within threshold)
+    // Rule 1: Minimum rounds required before a natural gap-convergence agreement can be finalized.
     // Rule 2: If all agents are Aggressive, never allow agreement (must result in DEADLOCK).
     const canConcludeAgreement = numCurRound >= minRounds && !allAggressive;
 
-    // Condition A: Explicit or Numerical Agreement
-    const isExplicitAccept = action === 'ACCEPT' || agreementReached === true;
     const hasSufficientOffers = typeof allHaveOffered === 'boolean'
       ? allHaveOffered
       : (bothHaveOffered ?? true);
@@ -1720,7 +1758,7 @@ if (
       ? (isRoundEnd && hasSufficientOffers && currentGap <= threshold && currentGap >= 0)
       : (hasSufficientOffers && currentGap <= threshold && currentGap >= 0);
 
-    if (canConcludeAgreement && (isExplicitAccept || isGapConverged)) {
+    if (canConcludeAgreement && isGapConverged) {
       return {
         shouldStop: true,
         finalStatus: 'COMPLETED',

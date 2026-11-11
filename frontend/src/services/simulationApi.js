@@ -718,7 +718,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           const prodOk = hProd >= 250000;
           const isSatisfactory = engOk && mktOk && prodOk;
 
-          if (canConcludeAgreement && isSatisfactory && rNum >= targetRound) {
+          if (isSatisfactory && (hTotal <= 1000000 || (canConcludeAgreement && rNum >= targetRound))) {
             moveAction = 'ACCEPT';
             moveOffer = isEng ? hEng : (isMkt ? hMkt : hProd);
             moveMessage = `We agree to finalize your proposed allocation within the ₹10,00,000 ceiling: Engineering ₹${hEng.toLocaleString()}, Marketing ₹${hMkt.toLocaleString()}, Product AI ₹${hProd.toLocaleString()}.`;
@@ -730,7 +730,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           }
         }
       } else {
-        if (canConcludeAgreement && totalDemanded <= 1000000 && rNum >= targetRound) {
+        if (totalDemanded <= 1000000 || (canConcludeAgreement && rNum >= targetRound)) {
           moveAction = 'ACCEPT';
           moveOffer = isEng ? 410000 : (isMkt ? 325000 : 265000);
           moveMessage = `We agree to finalize the balanced ₹1,000,000 tripartite allocation: Engineering ₹410,000, Marketing ₹325,000, Product AI ₹265,000.`;
@@ -758,7 +758,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           ? Math.max(170000, Math.round(175000 - rNum * 500))
           : Math.max(162000, Math.round(175000 - progress * 10000 + jitter));
         const recruiterOffer = cpAgent?.current_offer || 152000;
-        if (canConcludeAgreement && rNum >= targetRound && (recruiterOffer >= candidateOffer || Math.abs(candidateOffer - recruiterOffer) <= 2000)) {
+        if (recruiterOffer >= candidateOffer || (canConcludeAgreement && rNum >= targetRound && Math.abs(candidateOffer - recruiterOffer) <= 2000)) {
           moveAction = 'ACCEPT';
           moveOffer = recruiterOffer;
           moveMessage = `Thank you for working through these terms. I am pleased to accept the agreed base salary of ₹${Number(moveOffer).toLocaleString()}.`;
@@ -771,7 +771,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           ? Math.min(158000, Math.round(152000 + rNum * 600))
           : Math.min(166000, Math.round(152000 + progress * 12000 - jitter));
         const candidateOffer = cpAgent?.current_offer || 175000;
-        if (canConcludeAgreement && rNum >= targetRound && (recruiterOffer >= candidateOffer || Math.abs(candidateOffer - recruiterOffer) <= 2000)) {
+        if (candidateOffer <= recruiterOffer || (canConcludeAgreement && rNum >= targetRound && Math.abs(candidateOffer - recruiterOffer) <= 2000)) {
           moveAction = 'ACCEPT';
           moveOffer = candidateOffer;
           moveMessage = `We are pleased to extend and finalize an agreed compensation of ₹${Number(moveOffer).toLocaleString()} base salary. Welcome to the team!`;
@@ -795,7 +795,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           ? Math.min(97000, Math.round(95000 + rNum * 300))
           : Math.min(103000, Math.round(95000 + progress * 7000 + jitter));
         const sellerOffer = cpAgent?.current_offer || 110000;
-        if (canConcludeAgreement && rNum >= targetRound && (sellerOffer <= buyerOffer || Math.abs(sellerOffer - buyerOffer) <= 1500)) {
+        if (sellerOffer <= buyerOffer || (canConcludeAgreement && rNum >= targetRound && Math.abs(sellerOffer - buyerOffer) <= 1500)) {
           moveAction = 'ACCEPT';
           moveOffer = sellerOffer;
           moveMessage = `We accept your proposed contract valuation of ₹${Number(moveOffer).toLocaleString()} with Net-60 payment terms.`;
@@ -808,7 +808,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           ? Math.max(106000, Math.round(110000 - rNum * 400))
           : Math.max(100000, Math.round(110000 - progress * 9000 - jitter));
         const buyerOffer = cpAgent?.current_offer || 95000;
-        if (canConcludeAgreement && rNum >= targetRound && (buyerOffer >= sellerOffer || Math.abs(sellerOffer - buyerOffer) <= 1500)) {
+        if (buyerOffer >= sellerOffer || (canConcludeAgreement && rNum >= targetRound && Math.abs(sellerOffer - buyerOffer) <= 1500)) {
           moveAction = 'ACCEPT';
           moveOffer = buyerOffer;
           moveMessage = `We are pleased to accept your proposed contract value of ₹${Number(moveOffer).toLocaleString()} with Net-60 terms and four-week delivery.`;
@@ -840,10 +840,32 @@ function advanceLocalSimulation(simulationId, customMove = null) {
   let currentGapCalc = 0;
   if (sim.scenario_id === 'project-budget') {
     const totalAllocated = agents.reduce((sum, a) => sum + (Number(a.current_offer) || 0), 0);
-    currentGapCalc = Math.max(0, totalAllocated - 1000000);
+    currentGapCalc = totalAllocated <= 1000000 ? 0 : totalAllocated - 1000000;
+  } else if (sim.scenario_id === 'job-offer') {
+    const recruiter = agents.find(a => `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('recruiter') || `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('hiring')) || agents[0];
+    const candidate = agents.find(a => a !== recruiter) || agents[1];
+    const rOffer = Number(recruiter?.current_offer || 0);
+    const cOffer = Number(candidate?.current_offer || 0);
+    if (rOffer > 0 && cOffer > 0) {
+      currentGapCalc = rOffer >= cOffer ? 0 : (cOffer - rOffer);
+    } else {
+      currentGapCalc = Math.abs(rOffer - cOffer);
+    }
   } else {
-    const liveOffers = agents.map(a => Number(a.current_offer)).filter(v => !isNaN(v) && v > 0);
-    currentGapCalc = liveOffers.length >= 2 ? Math.abs(liveOffers[0] - liveOffers[1]) : 0;
+    // Vendor Pricing
+    const buyer = agents.find(a => `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('buyer') || `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('procurement') || `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase().includes('purchasing')) || agents[0];
+    const seller = agents.find(a => a !== buyer) || agents[1];
+    const bOffer = Number(buyer?.current_offer || 0);
+    const sOffer = Number(seller?.current_offer || 0);
+    if (bOffer > 0 && sOffer > 0) {
+      currentGapCalc = bOffer >= sOffer ? 0 : (sOffer - bOffer);
+    } else {
+      currentGapCalc = Math.abs(bOffer - sOffer);
+    }
+  }
+
+  if (moveAction === 'ACCEPT') {
+    currentGapCalc = 0;
   }
 
   const newMessages = [

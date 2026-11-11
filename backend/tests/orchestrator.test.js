@@ -518,6 +518,81 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     assert.strictEqual(result.deadlock_resolution.active, false);
   });
 
+  await test('17. Mathematical Crossover & Auto-Agreement: Buyer offer >= Seller ask automatically ends simulation', async () => {
+    // Scenario 1: Vendor Pricing
+    // Opening seller move has already occurred at initialization (Round 1, Turn 1: ~₹110,000)
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'buyer-procurement', role: 'Purchasing Director', name: 'Purchasing Director', personality: 'Human', is_human: true },
+        { id: 'vendor-sales', role: 'Sales Account Executive', name: 'Sales Account Executive', personality: 'Collaborative' },
+      ],
+    });
+
+    // Human Buyer submits 2,000,000 in Round 1 (far exceeds seller's ₹110,000 asking price)
+    const buyerStep = await orchestratorService.advanceStep(sim.id, {
+      message: '2000k',
+      offer_value: 2000000,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Purchasing Director',
+      is_human: true,
+    });
+
+    assert.strictEqual(buyerStep.simulation.current_gap, 0, 'Gap must be 0 when buyer offers >= seller ask');
+
+    // Turn advances to AI Seller in Round 2. Seller MUST accept and simulation MUST conclude immediately
+    const sellerStep = await orchestratorService.advanceStep(sim.id);
+    assert.strictEqual(sellerStep.action, 'ACCEPT', 'Seller must accept when buyer offer >= seller ask');
+    assert.strictEqual(sellerStep.simulation.status, 'COMPLETED', 'Simulation must immediately conclude as COMPLETED');
+    assert.strictEqual(sellerStep.stoppingConditionMet, true, 'Stopping condition must be met');
+    assert.strictEqual(sellerStep.simulation.current_gap, 0, 'Final gap must be 0');
+
+    // Next step must not advance turns
+    const afterConclusion = await orchestratorService.advanceStep(sim.id);
+    assert.strictEqual(afterConclusion.advanced, false, 'Turn must not advance after agreement conclusion');
+
+    // Scenario 2: Job Offer
+    const jobSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'candidate', role: 'Job Candidate', personality: 'Collaborative' },
+        { id: 'hiring-director', role: 'Hiring Director', personality: 'Collaborative' },
+      ],
+    });
+    // Candidate opens with ₹175,000 ask. Recruiter counters with ₹180,000 (exceeds candidate's ask)
+    await orchestratorService.advanceStep(jobSim.id, {
+      message: 'We offer ₹180,000 base salary',
+      offer_value: 180000,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Hiring Director',
+    });
+    // Candidate's turn: receives 180,000 >= 175,000 -> must accept and complete
+    const candidateStep = await orchestratorService.advanceStep(jobSim.id);
+    assert.strictEqual(candidateStep.action, 'ACCEPT', 'Candidate must accept when recruiter offer >= candidate ask');
+    assert.strictEqual(candidateStep.simulation.status, 'COMPLETED', 'Simulation must conclude in COMPLETED');
+
+    // Scenario 3: Project Budget Allocation (total demands <= 1,000,000)
+    const evalResult = orchestratorService.evaluateStoppingConditions({
+      action: 'ACCEPT',
+      agreementReached: true,
+      currentGap: 0,
+      threshold: 0,
+      currentRound: 2,
+      maxRounds: 10,
+      isRoundEnd: true,
+      settlementPrice: 1000000,
+      bothHaveOffered: true,
+      allHaveOffered: true,
+      totalAgents: 3,
+      isPractice: false,
+      minRounds: 5,
+    });
+    assert.strictEqual(evalResult.shouldStop, true, 'Direct mathematical crossover (gap <= 0) must trigger immediate agreement');
+    assert.strictEqual(evalResult.finalStatus, 'COMPLETED');
+  });
+
   console.log(`\n========================================`);
   console.log(`Results: ${passedCount} Passed, ${failedCount} Failed`);
   console.log(`========================================\n`);

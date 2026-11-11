@@ -353,6 +353,16 @@ export async function restartSimulation(simulationId) {
   } catch (err) {
     console.warn('[Simulation API] Restart error:', err.message);
   }
+
+  // Local fallback restart: generate brand-new simulation with randomized target agreement round
+  const oldSim = localSimulationsCache.get(simulationId);
+  if (oldSim) {
+    const newSim = createLocalSimulation(oldSim.scenario_id, oldSim.agents, oldSim.max_rounds);
+    newSim.id = simulationId;
+    localSimulationsCache.set(simulationId, newSim);
+    return newSim;
+  }
+
   return null;
 }
 
@@ -576,7 +586,7 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
     max_rounds: maxRounds || config.defaultMaxRounds || (scenarioId === 'job-offer' ? 8 : 12),
     current_gap: initialGap,
     agreement_likelihood: 50,
-    targetAgreementRound: 5 + Math.floor(Math.random() * 4),
+    targetAgreementRound: 6 + Math.floor(Math.random() * (Math.max(7, maxRounds || config.defaultMaxRounds || 12) - 6 + 1)),
     agents: effectiveAgents,
     messages: initialMessages,
     offers: initialOffers,
@@ -661,14 +671,15 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     const rNum = Number(sim.current_round || 1);
     const progress = Math.min(1.0, (rNum - 1) / Math.max(1, maxR - 3));
 
-    // Determine target agreement round randomly (between 5 and 9) if not already chosen
+    // Determine target agreement round randomly (between 6 and maxR) if not already chosen
+    // Guarantees negotiations end at different rounds randomly every run, with minimum 5 rounds required
     if (!sim.targetAgreementRound) {
-      sim.targetAgreementRound = 5 + Math.floor(Math.random() * 4);
+      sim.targetAgreementRound = 6 + Math.floor(Math.random() * (Math.max(7, maxR) - 6 + 1));
     }
     const targetRound = sim.targetAgreementRound;
 
     const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
-    const canConcludeAgreement = rNum >= 5 && !allAggressive;
+    const canConcludeAgreement = rNum >= 5 && rNum >= targetRound && !allAggressive;
 
     if (sim.scenario_id === 'project-budget') {
       const isEng = (activeAgent.id || '').includes('engineering') || (activeAgent.role || '').toLowerCase().includes('engineering');

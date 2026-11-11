@@ -216,9 +216,15 @@ async def call_gemini_model(req: NegotiationTurnRequest) -> Optional[Negotiation
     if action == "OFFER" and has_prior:
         action = "COUNTER_OFFER"
 
-    # Guardrail: Prevent premature agreement if agent is Aggressive and round is early (rounds 1-5)
+    # Guardrail: Strict rule - NEVER allow ACCEPT before Round 5 under any circumstances!
     agent_personality = (req.agent.personality or "Collaborative").lower()
-    if action == "ACCEPT" and req.round_number <= 5 and "aggressive" in agent_personality:
+    if action == "ACCEPT" and req.round_number < 5:
+        logger.info(f"Guardrail enforced minimum 5 rounds: adjusted premature ACCEPT in round {req.round_number} to COUNTER_OFFER")
+        action = "COUNTER_OFFER"
+        parsed["agreement_reached"] = False
+
+    # Guardrail: Prevent premature agreement if agent is Aggressive and round is early (rounds 1-7)
+    if action == "ACCEPT" and req.round_number <= 7 and "aggressive" in agent_personality:
         logger.info(f"Guardrail adjusted premature ACCEPT by Aggressive agent in round {req.round_number} to COUNTER_OFFER")
         action = "COUNTER_OFFER"
         parsed["agreement_reached"] = False
@@ -279,9 +285,15 @@ def _package_reasoning_turn_response(req: NegotiationTurnRequest, parsed: dict) 
     if action == "OFFER" and has_prior:
         action = "COUNTER_OFFER"
 
-    # Guardrail: Prevent premature agreement if agent is Aggressive and round is early (rounds 1-5)
+    # Guardrail: Strict rule - NEVER allow ACCEPT before Round 5 under any circumstances!
     agent_personality = (req.agent.personality or "Collaborative").lower()
-    if action == "ACCEPT" and req.round_number <= 5 and "aggressive" in agent_personality:
+    if action == "ACCEPT" and req.round_number < 5:
+        logger.info(f"Guardrail enforced minimum 5 rounds: adjusted premature ACCEPT in round {req.round_number} to COUNTER_OFFER")
+        action = "COUNTER_OFFER"
+        parsed["agreement_reached"] = False
+
+    # Guardrail: Prevent premature agreement if agent is Aggressive and round is early (rounds 1-7)
+    if action == "ACCEPT" and req.round_number <= 7 and "aggressive" in agent_personality:
         logger.info(f"Guardrail adjusted premature ACCEPT by Aggressive agent in round {req.round_number} to COUNTER_OFFER")
         action = "COUNTER_OFFER"
         parsed["agreement_reached"] = False
@@ -427,13 +439,19 @@ def compute_concession_rate(personality: str, round_num: int, max_rounds: int, c
     p_lower = personality.lower()
     cp_lower = counterpart_personality.lower()
 
+    # Dynamic jitter so mathematical curves don't cross at the exact same deterministic round every run
+    jitter = random.uniform(-0.06, 0.06)
+
     if "aggressive" in p_lower:
-        dampener = 0.7 if "aggressive" in cp_lower else 1.0
-        return dampener * (0.04 * t_norm + 0.35 * (t_norm ** 3))
+        dampener = 0.4 if "aggressive" in cp_lower else 0.75
+        rate = dampener * (0.04 * t_norm + 0.32 * (t_norm ** 3)) + jitter * 0.4
+        return max(0.0, min(0.45, rate))
     elif "risk" in p_lower:
-        return min(0.90, 0.25 + 0.65 * (t_norm ** 0.6))
+        rate = 0.20 + 0.60 * (t_norm ** 0.8) + jitter
+        return max(0.05, min(0.85, rate))
     else:
-        return min(0.75, 0.10 + 0.65 * t_norm)
+        rate = 0.08 + 0.62 * t_norm + jitter
+        return max(0.05, min(0.80, rate))
 
 
 def generate_domain_fallback_response(req: NegotiationTurnRequest) -> NegotiationTurnResponse:
@@ -474,6 +492,13 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
     action = "COUNTER_OFFER" if (has_prior_moves or round_num > 1) else "OFFER"
     agreement = False
 
+    is_both_aggressive = "aggressive" in p_name.lower() and "aggressive" in cp_name.lower()
+    can_conclude_agreement = round_num >= 5 and not is_both_aggressive
+
+    # Stochastic acceptance gate: ensures agreement rounds vary across runs (e.g. round 6, 7, 8, 9, 10, 11)
+    accept_chance = 0.25 if round_num == 5 else (0.45 if round_num == 6 else (0.65 if round_num == 7 else (0.80 if round_num == 8 else 0.95)))
+    is_stochastically_ready = random.random() < accept_chance
+
     # -------------------------------------------------------------
     # Scenario 1: Vendor Pricing Negotiation
     # -------------------------------------------------------------
@@ -483,15 +508,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
         if is_buyer:
             price_target = 95000.0
             price_limit = 100000.0
-            price_conceded = round(price_target + concession_rate * (price_limit - price_target), -2)
+            price_jitter = random.uniform(-800.0, 800.0)
+            price_conceded = round(price_target + concession_rate * (price_limit - price_target) + price_jitter, -2)
             proposed_price = min(price_limit, max(price_target, price_conceded))
 
-            if counterpart_offer is not None:
-                if counterpart_offer <= proposed_price:
-                    action = "ACCEPT"
-                    agreement = True
-                    proposed_price = counterpart_offer
-                elif counterpart_offer <= price_limit and ((counterpart_offer - proposed_price) <= 500 or (round_num >= 8 and "aggressive" not in p_name.lower())):
+            if counterpart_offer is not None and can_conclude_agreement:
+                if (counterpart_offer <= proposed_price or (counterpart_offer <= price_limit and (counterpart_offer - proposed_price) <= 1200)) and is_stochastically_ready:
                     action = "ACCEPT"
                     agreement = True
                     proposed_price = counterpart_offer
@@ -541,15 +563,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
         else:
             price_target = 110000.0
             price_limit = 90000.0
-            price_conceded = round(price_target - concession_rate * (price_target - price_limit), -2)
+            price_jitter = random.uniform(-800.0, 800.0)
+            price_conceded = round(price_target - concession_rate * (price_target - price_limit) + price_jitter, -2)
             proposed_price = max(price_limit, min(price_target, price_conceded))
 
-            if counterpart_offer is not None:
-                if counterpart_offer >= proposed_price:
-                    action = "ACCEPT"
-                    agreement = True
-                    proposed_price = counterpart_offer
-                elif counterpart_offer >= price_limit and ((proposed_price - counterpart_offer) <= 500 or (round_num >= 8 and "aggressive" not in p_name.lower())):
+            if counterpart_offer is not None and can_conclude_agreement:
+                if (counterpart_offer >= proposed_price or (counterpart_offer >= price_limit and (proposed_price - counterpart_offer) <= 1200)) and is_stochastically_ready:
                     action = "ACCEPT"
                     agreement = True
                     proposed_price = counterpart_offer
@@ -609,15 +628,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
         if is_candidate:
             sal_target = 175000.0
             sal_limit = 160000.0
-            sal_conceded = round(sal_target - concession_rate * (sal_target - sal_limit), -2)
+            sal_jitter = random.uniform(-1000.0, 1000.0)
+            sal_conceded = round(sal_target - concession_rate * (sal_target - sal_limit) + sal_jitter, -2)
             base_salary = max(sal_limit, min(sal_target, sal_conceded))
 
-            if counterpart_offer is not None:
-                if counterpart_offer >= base_salary:
-                    action = "ACCEPT"
-                    agreement = True
-                    base_salary = counterpart_offer
-                elif counterpart_offer >= sal_limit and ((base_salary - counterpart_offer) <= 500 or round_num >= 8):
+            if counterpart_offer is not None and can_conclude_agreement:
+                if (counterpart_offer >= base_salary or (counterpart_offer >= sal_limit and (base_salary - counterpart_offer) <= 1500)) and is_stochastically_ready:
                     action = "ACCEPT"
                     agreement = True
                     base_salary = counterpart_offer
@@ -652,15 +668,12 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
         else:
             sal_target = 150000.0
             sal_limit = 168000.0
-            sal_conceded = round(sal_target + concession_rate * (sal_limit - sal_target), -2)
+            sal_jitter = random.uniform(-1000.0, 1000.0)
+            sal_conceded = round(sal_target + concession_rate * (sal_limit - sal_target) + sal_jitter, -2)
             base_salary = min(sal_limit, max(sal_target, sal_conceded))
 
-            if counterpart_offer is not None:
-                if counterpart_offer <= base_salary:
-                    action = "ACCEPT"
-                    agreement = True
-                    base_salary = counterpart_offer
-                elif counterpart_offer <= sal_limit and ((counterpart_offer - base_salary) <= 500 or round_num >= 8):
+            if counterpart_offer is not None and can_conclude_agreement:
+                if (counterpart_offer <= base_salary or (counterpart_offer <= sal_limit and (counterpart_offer - base_salary) <= 1500)) and is_stochastically_ready:
                     action = "ACCEPT"
                     agreement = True
                     base_salary = counterpart_offer
@@ -708,15 +721,15 @@ def generate_domain_fallback_response(req: NegotiationTurnRequest) -> Negotiatio
         mkt_concession_max = 20000 if "aggressive" in p_name.lower() else 40000
         prod_concession_max = 15000 if "aggressive" in p_name.lower() else 35000
 
-        eng_req = int(450000 - concession_rate * eng_concession_max)
-        mkt_req = int(350000 - concession_rate * mkt_concession_max)
+        eng_req = int(450000 - concession_rate * eng_concession_max + random.uniform(-2000, 2000))
+        mkt_req = int(350000 - concession_rate * mkt_concession_max + random.uniform(-2000, 2000))
         prod_req = int(300000 - concession_rate * prod_concession_max)
         total_demanded = eng_req + mkt_req + prod_req
 
         is_eng = any(term in agent_id for term in ("engineering", "infrastructure", "vp-engineering", "department-a"))
         is_mkt = any(term in agent_id for term in ("marketing", "growth", "cmo", "department-b"))
 
-        if round_num >= 8 or total_demanded <= 1000000:
+        if can_conclude_agreement and (total_demanded <= 1000000 or (round_num >= 7 and is_stochastically_ready)):
             eng_final = 410000
             mkt_final = 325000
             prod_final = 265000

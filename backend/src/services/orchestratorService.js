@@ -1025,6 +1025,10 @@ class OrchestratorAgent {
     const initialSellerOffer = effectiveAgents[1]?.current_offer || effectiveAgents[1]?.target_value || 11000;
     const initialGap = Math.abs(initialBuyerOffer - initialSellerOffer);
 
+    // Random target agreement round (min 5, up to effectiveMaxRounds)
+    // Ensures every simulation concludes at a diverse, unpredictable round (e.g. 6, 7, 8, 9, 10, 11, 12)
+    const randomizedTarget = Math.floor(Math.random() * (Math.max(7, effectiveMaxRounds) - 6 + 1)) + 6;
+
     const simulationRecord = {
       id: simId,
       scenario_id: preset.id,
@@ -1032,6 +1036,7 @@ class OrchestratorAgent {
       status: 'RUNNING',
       current_round: 1,
       max_rounds: effectiveMaxRounds,
+      target_round: randomizedTarget,
       current_gap: initialGap,
       agreement_likelihood: 50,
       user_email: userEmail || null,

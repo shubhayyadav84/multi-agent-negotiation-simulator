@@ -120,6 +120,11 @@ function generateDeterministicAgentMove({
   const isBothAggressive = isMyAggressive && isCpAggressive;
   const canConcludeAgreement = roundNumber >= 5 && !isBothAggressive;
 
+  // Stochastic acceptance gate ensures agreements do not repeat a fixed round pattern
+  // Enables randomized conclusions across rounds 6, 7, 8, 9, 10, 11, etc.
+  const acceptChance = roundNumber === 5 ? 0.25 : roundNumber === 6 ? 0.45 : roundNumber === 7 ? 0.65 : roundNumber === 8 ? 0.80 : 0.95;
+  const isStochasticallyReady = Math.random() < acceptChance;
+
   const concessionRate = calculateConcessionRate(personality, roundNumber, maxRounds, cpPersonality);
   const hasPriorOffers = Array.isArray(history) && history.some((m) => m.offer_value || m.sender_type === 'AGENT' || m.sender_type === 'HUMAN');
   const counterpartOffer = hasPriorOffers && counterpart?.current_offer ? Number(counterpart.current_offer) : null;
@@ -146,9 +151,9 @@ function generateDeterministicAgentMove({
     const isEng = agentDescriptor.includes('engineering') || agentDescriptor.includes('infrastructure') || agentDescriptor.includes('department-a') || agentDescriptor.includes('lead software') || agentDescriptor.includes('vp-eng');
     const isMkt = agentDescriptor.includes('marketing') || agentDescriptor.includes('growth') || agentDescriptor.includes('department-b') || agentDescriptor.includes('cmo');
 
-    // Strict Project Budget rule: Agreement is reached ONLY if roundNumber >= 5, not aggressive deadlock, and total demands <= 1000000!
+    // Strict Project Budget rule: Agreement is reached ONLY if roundNumber >= 5, not aggressive deadlock, and within ceiling or late round stochastic consensus!
     const isBudgetWithinCeiling = totalDemanded <= 1000000;
-    if (canConcludeAgreement && isBudgetWithinCeiling && roundNumber >= 6) {
+    if (canConcludeAgreement && (isBudgetWithinCeiling || (roundNumber >= 7 && isStochasticallyReady))) {
       // Balanced consensus allocation summing to exactly 1,000,000
       const engFinal = 410000;
       const mktFinal = 325000;
@@ -247,11 +252,11 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(salTarget - concessionRate * (salTarget - salLimit));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        if (canConcludeAgreement && counterpartOffer >= proposedOffer) {
+        if (canConcludeAgreement && counterpartOffer >= proposedOffer && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
-        } else if (canConcludeAgreement && counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        } else if (canConcludeAgreement && counterpartOffer >= salLimit && ((proposedOffer - counterpartOffer) <= 1200) && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -293,11 +298,11 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(salTarget + concessionRate * (salLimit - salTarget));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        if (canConcludeAgreement && counterpartOffer <= proposedOffer) {
+        if (canConcludeAgreement && counterpartOffer <= proposedOffer && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
-        } else if (canConcludeAgreement && counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        } else if (canConcludeAgreement && counterpartOffer <= salLimit && ((counterpartOffer - proposedOffer) <= 1200) && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -349,14 +354,8 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(priceTarget + concessionRate * (priceLimit - priceTarget));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        // Condition 1: Seller asks less than or equal to what buyer was offering
-        if (canConcludeAgreement && counterpartOffer <= proposedOffer) {
-          action = 'ACCEPT';
-          agreementReached = true;
-          proposedOffer = counterpartOffer;
-        }
-        // Condition 2: Seller asks within buyer ceiling with close gap or in late rounds
-        else if (canConcludeAgreement && counterpartOffer <= priceLimit && ((counterpartOffer - proposedOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        // Buyer accepts seller offer when terms converge and stochastic check confirms alignment
+        if (canConcludeAgreement && (counterpartOffer <= proposedOffer || (counterpartOffer <= priceLimit && (counterpartOffer - proposedOffer) <= 1200)) && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;
@@ -401,14 +400,8 @@ function generateDeterministicAgentMove({
       proposedOffer = Math.round(priceTarget - concessionRate * (priceTarget - priceLimit));
 
       if (counterpartOffer !== null && counterpartOffer !== undefined && counterpartOffer > 0) {
-        // Condition 1: Buyer offers more than or equal to what seller is asking
-        if (canConcludeAgreement && counterpartOffer >= proposedOffer) {
-          action = 'ACCEPT';
-          agreementReached = true;
-          proposedOffer = counterpartOffer;
-        }
-        // Condition 2: Buyer offers above floor with close gap or in late rounds
-        else if (canConcludeAgreement && counterpartOffer >= priceLimit && ((proposedOffer - counterpartOffer) <= 500 || (roundNumber >= 8 && !personality.includes('aggressive')))) {
+        // Seller accepts buyer offer when terms converge and stochastic check confirms alignment
+        if (canConcludeAgreement && (counterpartOffer >= proposedOffer || (counterpartOffer >= priceLimit && (proposedOffer - counterpartOffer) <= 1200)) && isStochasticallyReady) {
           action = 'ACCEPT';
           agreementReached = true;
           proposedOffer = counterpartOffer;

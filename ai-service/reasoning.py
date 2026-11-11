@@ -80,20 +80,21 @@ STRATEGIC PERSONALITY DIRECTIVES:
 - Aggressive:
   * You defend your target value fiercely and make minimal concessions (at most 0.5% - 1.5% per round).
   * In rounds 1 through 7, NEVER choose "ACCEPT" unless the counterpart has fully conceded to your target or reservation threshold.
-  * CRITICAL FOR AGGRESSIVE VS AGGRESSIVE: Both you and your counterpart are Aggressive! Stand your ground firmly. Do NOT concede easily and DO NOT accept or converge in round 4. Force the negotiation into late rounds (rounds 8-10). If your counterpart refuses to concede, keep countering firmly or let it deadlock in round {max_rounds}.
+  * CRITICAL FOR AGGRESSIVE VS AGGRESSIVE: Both you and your counterpart are Aggressive! Stand your ground firmly. Do NOT concede easily and DO NOT accept or converge early. Force the negotiation into late rounds (rounds 8-12). If your counterpart refuses to concede, keep countering firmly or let it deadlock in round {max_rounds}.
 - Collaborative:
-  * You seek a balanced, mutually beneficial agreement. Concede steadily and reciprocally (15% - 25% of the remaining gap per round).
-  * Aim to converge and reach agreement around Round 5, 6, or 7 by exploring creative compromises on secondary terms.
+  * You seek a balanced, mutually beneficial agreement. Concede steadily and reciprocally (10% - 20% of the remaining gap per round).
+  * Do NOT rush to a fixed round conclusion. Explore nuanced trade-offs across multiple rounds so convergence emerges naturally between Round 6 and Round 11.
 - Risk-Averse:
-  * You prioritize certainty and avoiding deadlock above all else.
-  * Make larger concessions early on to ensure convergence quickly (around Round 3 to 5).
+  * You prioritize certainty and avoiding deadlock, but maintain commercial prudence.
+  * Concede carefully across rounds to secure agreement without giving away margin prematurely. NEVER accept before Round 5.
 
 RULES & CONSTRAINTS:
-- Consider the complete scenario, goals, constraints, personality, and conversation history.
+- STRICT MINIMUM 5 ROUNDS RULE: NEVER execute "ACCEPT" before Round 5 under any circumstances! Rounds 1, 2, 3, and 4 are strictly for active bargaining, counter-proposals, and probing trade-offs.
+- RANDOMIZED, NON-DETERMINISTIC CONVERGENCE: Do NOT follow a fixed round pattern or always settle in Round 5 or 6! Every negotiation run must feel distinct and unpredictable. Vary your concessions and bargaining posture naturally so that agreement can occur at diverse rounds (e.g. Round 6, 7, 8, 9, 10, 11, or 12), or result in a deadlock if positions fail to align.
 - Check current Round ({round_number} of {max_rounds}):
-  * In early rounds (1-3), maintain an active gap. DO NOT execute "ACCEPT" in round 1 or 2.
-  * If you are Aggressive, DO NOT accept in rounds 1 through 7 unless your target is met.
-  * If both agents are Aggressive, DO NOT converge in round 4! Stand firm and keep countering through later rounds.
+  * If round_number < 5: You MUST choose "OFFER" or "COUNTER_OFFER". "ACCEPT" is strictly prohibited before Round 5!
+  * If you are Aggressive: DO NOT accept in rounds 1 through 7 unless your target is met.
+  * If both agents are Aggressive: DO NOT accept! Stand firm and keep countering through later rounds.
 - Never knowingly violate a stated hard constraint (e.g. Buyer payment_days >= 60).
 - For vendor-pricing: proposed_offer must include "price" (numeric), "payment_days" (numeric, >= 60 for buyer), and "delivery_weeks" (numeric).
 - For job-offer: proposed_offer must include "base_salary" (numeric), "sign_on_bonus" (numeric), "equity_pct" (numeric), "office_days" (numeric), "joining_days" (numeric).

@@ -5,14 +5,26 @@ An AI-powered negotiation simulation and training platform designed to model, st
 [![React](https://img.shields.io/badge/React-19.0.0-blue.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.4.4-646CFF.svg)](https://vitejs.dev/)
 [![React Router](https://img.shields.io/badge/React_Router-7.3.0-CA4245.svg)](https://reactrouter.com/)
-[![Frontend Tests](https://img.shields.io/badge/Frontend_Tests-21%20Passed-10b981.svg)](#running-tests)
-[![Backend Tests](https://img.shields.io/badge/Backend_Tests-9%20Passed-10b981.svg)](#running-tests)
+[![Frontend Tests](https://img.shields.io/badge/Frontend_Tests-29%20Passed-10b981.svg)](#running-tests)
+[![Backend Tests](https://img.shields.io/badge/Backend_Tests-16%20Passed-10b981.svg)](#running-tests)
 [![Build](https://img.shields.io/badge/Build-Passing-success.svg)](#building-for-production)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
+## 🌐 Live Deployments
+
+| Service | Platform | Live URL |
+| :--- | :--- | :--- |
+| **Frontend Application** | Vercel | [https://multi-agent-negotiation-simulator-sepia.vercel.app/](https://multi-agent-negotiation-simulator-sepia.vercel.app/) |
+| **Backend API** | Render | [https://negotiator-backend-28r5.onrender.com/](https://negotiator-backend-28r5.onrender.com/) |
+| **AI Reasoning Service** | Render | [https://negotiator-ai-service.onrender.com/](https://negotiator-ai-service.onrender.com/) |
+
+---
+
 ## Table of Contents
+
+- [Live Deployments](#-live-deployments)
 
 - [Project Description](#project-description)
 - [Milestone Architecture & Workflow](#milestone-architecture--workflow)

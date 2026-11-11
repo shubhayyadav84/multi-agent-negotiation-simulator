@@ -900,7 +900,229 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       timestamp_label: timeStr,
     });
   } else if (isRoundEnd) {
-    if (sim.current_round >= maxR) {
+    const compromiseMarker = '[DEADLOCK_COMPROMISE_ATTEMPTED]';
+    const compromiseAlreadyAttempted = newMessages.some(
+      (m) => m.sender_type === 'ORCHESTRATOR' && (m.message || '').includes(compromiseMarker)
+    );
+
+    if (sim.current_round >= maxR && !compromiseAlreadyAttempted) {
+      // Impasse reached at round limit without agreement: Initiate Universal Deadlock Resolution!
+      const extendedMaxR = maxR + 2;
+      sim.max_rounds = extendedMaxR;
+      const sId = (sim.scenario_id || '').toLowerCase();
+      const isPractice = (sim.id && sim.id.startsWith('practice_')) ||
+        agents.some((a) => a.is_human === true || a.personality === 'Human') ||
+        sim.mode === 'practice' ||
+        sim.is_practice === true;
+
+      // 1. Generate scenario-specific compromise proposal
+      let compromise = {
+        offer_value: 102500,
+        summary: 'Equitable commercial contract: ₹1,02,500 total contract value, Net-45 payment terms, 4-week delivery, and 99.9% uptime SLA guarantee.',
+        terms: {
+          unitPrice: 102500,
+          payment_terms: 'Net-45 payment terms',
+          delivery_timeline: '4-week delivery',
+          uptime_sla: '99.9% uptime SLA guarantee',
+        },
+      };
+
+      if (sId.includes('job') || sId.includes('salary')) {
+        compromise = {
+          offer_value: 164000,
+          summary: 'Comprehensive compensation package: ₹1,64,000 base salary, Hybrid remote flexibility, 0.15% equity grant, and 30-day notice period.',
+          terms: {
+            baseSalary: 164000,
+            work_arrangement: 'Hybrid (2 days remote, 3 days on-site flexibility)',
+            equity_grant: '0.15% equity stock grant',
+            notice_period: '30-day notice period',
+          },
+        };
+      } else if (sId.includes('budget') || sId.includes('project')) {
+        compromise = {
+          offer_value: 1000000,
+          summary: 'Balanced tripartite allocation totaling ₹10,00,000: Engineering ₹4,10,000, Marketing ₹3,25,000, Product AI ₹2,65,000.',
+          terms: {
+            total: 1000000,
+            engineering: 410000,
+            marketing: 325000,
+            product: 265000,
+          },
+        };
+      }
+
+      const deadlockRes = {
+        active: true,
+        status: isPractice ? 'AWAITING_DECISION' : 'AWAITING_AI_EVALUATION',
+        detected_at_round: sim.current_round,
+        reason: `Maximum round limit (${maxR}) reached without agreement. Final gap remained ₹${Number(currentGapCalc || 0).toLocaleString()}.`,
+        initial_compromise: compromise,
+        latest_proposal: compromise,
+        counter_offer_attempts: 0,
+        max_counter_offers: 2,
+        history: [{ type: 'DEADLOCK_INITIATED', compromise, timestamp: new Date().toISOString() }],
+        final_outcome: null,
+      };
+      sim.deadlock_resolution = deadlockRes;
+
+      // 2. Post Deadlock Notice
+      newMessages.push({
+        id: `msg_local_dl_notice_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `${compromiseMarker} ⚠️ DEADLOCK DETECTED.\nReason: ${deadlockRes.reason}\nNormal negotiation turn-taking has been paused. Round limit extended to ${extendedMaxR} rounds. The Orchestrator has formulated a scenario-specific compromise proposal to resolve the impasse.`,
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+
+      // 3. Post Compromise Proposal
+      newMessages.push({
+        id: `msg_local_dl_prop_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `⚖️ ORCHESTRATOR COMPROMISE PROPOSAL:\n${compromise.summary}`,
+        offer_value: compromise.offer_value,
+        terms: compromise.terms,
+        action: 'DEADLOCK_PROPOSAL',
+        timestamp_label: timeStr,
+      });
+
+      if (!isPractice) {
+        // Simulation Mode: Execute automated 2 resolution attempts
+        newMessages.push({
+          id: `msg_local_dl_eval_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: 'Orchestrator Agent',
+          sender_role: 'Orchestrator',
+          message: `🤖 AI agents are now evaluating the Orchestrator's compromise proposal...`,
+          action: 'STATUS',
+          timestamp_label: timeStr,
+        });
+
+        const ag0 = agents[0] || { name: 'Agent 1', role: 'Party 1' };
+        const ag1 = agents[1] || agents[0] || { name: 'Agent 2', role: 'Party 2' };
+
+        // Attempt 1 of 2
+        deadlockRes.counter_offer_attempts = 1;
+        let a1Msg = `${ag0.name} (${ag0.role}): Counter-Offer (Attempt 1 of 2): Based on the Orchestrator's compromise, we submit a revised offer of ₹${Number(compromise.offer_value).toLocaleString()}.`;
+        if (sId.includes('job') || sId.includes('salary')) {
+          a1Msg = `${ag0.name} (${ag0.role}): Counter-Offer (Attempt 1 of 2): In light of the Orchestrator's compromise proposal, we adjust our compensation offer to ₹${Number(compromise.offer_value).toLocaleString()} base salary with ${compromise.terms?.equity_grant || '0.15% equity grant'} and ${compromise.terms?.work_arrangement || 'Hybrid'} flexibility.`;
+        } else if (sId.includes('budget') || sId.includes('project')) {
+          a1Msg = `${ag0.name} (${ag0.role}): Counter-Offer (Attempt 1 of 2): We propose aligning our department allocation with the Orchestrator's balanced framework (Engineering ₹4,10,000, Marketing ₹3,25,000, Product AI ₹2,65,000).`;
+        }
+        newMessages.push({
+          id: `msg_local_dl_att1_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'AGENT',
+          sender_name: ag0.name,
+          sender_role: ag0.role,
+          personality: ag0.personality,
+          message: a1Msg,
+          offer_value: compromise.offer_value,
+          terms: compromise.terms,
+          action: 'COUNTER_OFFER',
+          timestamp_label: timeStr,
+        });
+
+        newMessages.push({
+          id: `msg_local_dl_att1_orch_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: 'Orchestrator Agent',
+          sender_role: 'Orchestrator',
+          message: `⚖️ Orchestrator Agent: Counter-Offer (Attempt 1 of 2) logged. Forwarding proposal to counterpart for final evaluation (Attempt 2 of 2)...`,
+          action: 'STATUS',
+          timestamp_label: timeStr,
+        });
+
+        // Attempt 2 of 2
+        deadlockRes.counter_offer_attempts = 2;
+        if (!allAggressive) {
+          let a2Msg = `${ag1.name} (${ag1.role}): Resolution Evaluation (Attempt 2 of 2): We accept the commercial proposal of ₹${Number(compromise.offer_value).toLocaleString()} to finalize the agreement.`;
+          if (sId.includes('job') || sId.includes('salary')) {
+            a2Msg = `${ag1.name} (${ag1.role}): Resolution Evaluation (Attempt 2 of 2): We accept the revised compensation offer of ₹${Number(compromise.offer_value).toLocaleString()} with the agreed equity and hybrid terms. Consensus reached.`;
+          } else if (sId.includes('budget') || sId.includes('project')) {
+            a2Msg = `${ag1.name} (${ag1.role}): Resolution Evaluation (Attempt 2 of 2): We accept the balanced departmental budget allocation to ensure project success across all teams.`;
+          }
+
+          newMessages.push({
+            id: `msg_local_dl_att2_${Date.now()}`,
+            round_number: sim.current_round,
+            sender_type: 'AGENT',
+            sender_name: ag1.name,
+            sender_role: ag1.role,
+            personality: ag1.personality,
+            message: a2Msg,
+            offer_value: compromise.offer_value,
+            terms: compromise.terms,
+            action: 'ACCEPT',
+            timestamp_label: timeStr,
+          });
+
+          deadlockRes.active = false;
+          deadlockRes.status = 'RESOLVED';
+          deadlockRes.final_outcome = 'AGREEMENT_REACHED';
+          status = 'COMPLETED';
+          currentGapCalc = 0;
+
+          newMessages.push({
+            id: `msg_local_dl_concl_${Date.now()}`,
+            round_number: sim.current_round,
+            sender_type: 'ORCHESTRATOR',
+            sender_name: 'Orchestrator Agent',
+            sender_role: 'Orchestrator',
+            message: `🎉 AGREEMENT REACHED! All participating AI agents have unanimously accepted the compromise resolution on Attempt 2 of 2. The negotiation concluded successfully.`,
+            action: 'STATUS',
+            timestamp_label: timeStr,
+          });
+        } else {
+          newMessages.push({
+            id: `msg_local_dl_att2_rej_${Date.now()}`,
+            round_number: sim.current_round,
+            sender_type: 'AGENT',
+            sender_name: ag1.name,
+            sender_role: ag1.role,
+            personality: ag1.personality,
+            message: `${ag1.name} (${ag1.role}): Resolution Evaluation (Attempt 2 of 2): Our constraints remain strictly non-negotiable under our aggressive posture. We reject further concessions.`,
+            action: 'REJECT',
+            timestamp_label: timeStr,
+          });
+
+          deadlockRes.active = false;
+          deadlockRes.status = 'FAILED';
+          deadlockRes.final_outcome = 'DEADLOCK';
+          status = 'DEADLOCK';
+
+          newMessages.push({
+            id: `msg_local_dl_concl_fail_${Date.now()}`,
+            round_number: sim.current_round,
+            sender_type: 'ORCHESTRATOR',
+            sender_name: 'Orchestrator Agent',
+            sender_role: 'Orchestrator',
+            message: `Negotiation ended in Deadlock. Reason: All parties held unyielding aggressive positions and exhausted maximum counter-offer attempts (2 of 2). No agreement was reached.`,
+            action: 'STATUS',
+            timestamp_label: timeStr,
+          });
+        }
+      } else {
+        // Practice Mode: Await human decision
+        newMessages.push({
+          id: `msg_local_dl_instr_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: 'Orchestrator Agent',
+          sender_role: 'Orchestrator',
+          message: `The negotiation has reached a deadlock. The Orchestrator has proposed a compromise offer. You can ACCEPT the offer, REJECT it, or submit a COUNTER-OFFER. You have a maximum of 2 counter-offer attempts to reach an agreement.`,
+          action: 'STATUS',
+          timestamp_label: timeStr,
+        });
+      }
+    } else if (sim.current_round >= maxR) {
       status = 'DEADLOCK';
       newMessages.push({
         id: `msg_local_deadlock_${Date.now()}`,

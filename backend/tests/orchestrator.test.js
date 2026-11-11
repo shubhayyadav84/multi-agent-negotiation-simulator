@@ -314,8 +314,10 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     const fullRunResult = await orchestratorService.runFullSimulation(sim.id, 20);
     assert.ok(fullRunResult.stepsTaken > 0, 'Should have taken multiple steps');
     assert.ok(
-      fullRunResult.simulation.status === 'COMPLETED' || fullRunResult.simulation.status === 'DEADLOCK',
-      `Simulation status should be COMPLETED or DEADLOCK, was: ${fullRunResult.simulation.status}`
+      fullRunResult.simulation.status === 'COMPLETED' ||
+        fullRunResult.simulation.status === 'AGREEMENT_REACHED' ||
+        fullRunResult.simulation.status === 'DEADLOCK',
+      `Simulation status should be COMPLETED, AGREEMENT_REACHED or DEADLOCK, was: ${fullRunResult.simulation.status}`
     );
   });
 
@@ -591,6 +593,58 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     });
     assert.strictEqual(evalResult.shouldStop, true, 'Direct mathematical crossover (gap <= 0) must trigger immediate agreement');
     assert.strictEqual(evalResult.finalStatus, 'COMPLETED');
+  });
+
+  await test('18. Universal Deadlock Resolution: Impasse at Round 8/8 in Job Offer Simulation extends max rounds to 10 and executes 2 attempts ending in AGREEMENT_REACHED', async () => {
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 8,
+      customAgents: [
+        { id: 'recruiter', role: 'Recruiter', name: 'Recruiter', personality: 'Collaborative', current_offer: 163700 },
+        { id: 'candidate', role: 'Candidate', name: 'Candidate', personality: 'Collaborative', current_offer: 163900 },
+      ],
+    });
+
+    // Advance to Round 8
+    await db.updateSimulation(sim.id, {
+      current_round: 8,
+      current_gap: 200,
+    });
+
+    // Both agents take their turn in round 8: Candidate (higher ask) then Recruiter (lower ask)
+    await orchestratorService.advanceStep(sim.id, {
+      message: 'I can adjust my expectation to ₹163,900.',
+      offer_value: 163900,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Candidate',
+    });
+
+    const turn2 = await orchestratorService.advanceStep(sim.id, {
+      message: 'We value your experience and offer ₹163,700.',
+      offer_value: 163700,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Recruiter',
+    });
+
+    assert.strictEqual(turn2.deadlockInitiated, true, 'Deadlock should be initiated on impasse at round 8');
+
+    const updated = await db.getSimulation(sim.id);
+
+    // 1. Max rounds must be extended from 8 to 10 (+2 rounds)
+    assert.strictEqual(updated.max_rounds, 10, 'Max rounds should be extended by 2 (8 -> 10)');
+
+    // 2. Deadlock resolution must be initiated and recorded
+    assert.ok(updated.deadlock_resolution, 'Deadlock resolution object should be present');
+    assert.strictEqual(updated.status, 'AGREEMENT_REACHED', 'Collaborative agents should reach agreement in automated resolution');
+    assert.strictEqual(updated.deadlock_resolution.counter_offer_attempts, 2, 'Should execute 2 attempts');
+
+    // 3. Transcript must contain deadlock notice, compromise proposal, attempt 1, and attempt 2
+    const msgs = updated.messages.map((m) => m.message);
+    assert.ok(msgs.some((m) => m.includes('DEADLOCK DETECTED')), 'Transcript must contain DEADLOCK DETECTED notice');
+    assert.ok(msgs.some((m) => m.includes('ORCHESTRATOR COMPROMISE PROPOSAL')), 'Transcript must contain compromise proposal');
+    assert.ok(msgs.some((m) => m.includes('Attempt 1 of 2')), 'Transcript must show Attempt 1 of 2');
+    assert.ok(msgs.some((m) => m.includes('Attempt 2 of 2')), 'Transcript must show Attempt 2 of 2');
+    assert.ok(msgs.some((m) => m.includes('AGREEMENT REACHED')), 'Transcript must show final AGREEMENT REACHED notice');
   });
 
   console.log(`\n========================================`);

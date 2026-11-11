@@ -212,6 +212,30 @@ class OrchestratorAgent {
       };
     }
 
+    // Check if max rounds reached at round end without agreement
+    const numMaxRounds = Number(simulation.max_rounds || 10);
+    const numCurRound = Number(simulation.current_round || 1);
+    const agents = simulation.agents || [];
+    const roundMsgs = (simulation.messages || []).filter(
+      (message) =>
+        message.round_number === numCurRound &&
+        (message.sender_type === 'AGENT' || message.sender_type === 'HUMAN')
+    );
+    const isRoundEnd = agents.length > 0 && roundMsgs.length >= agents.length;
+    const currentGap = Number(simulation.current_gap);
+    const lastMsg = (simulation.messages || []).slice(-1)[0];
+    const hasAgreement =
+      (currentGap !== undefined && !isNaN(currentGap) && currentGap <= 0) ||
+      lastMsg?.action === 'ACCEPT';
+
+    if (isRoundEnd && numCurRound >= numMaxRounds && !hasAgreement) {
+      return {
+        detected: true,
+        reason: `Maximum round limit (${numMaxRounds}) reached without agreement. Final gap remained ₹${Number(simulation.current_gap || 0).toLocaleString()}.`,
+        type: 'MAX_ROUNDS_REACHED',
+      };
+    }
+
     return {
       detected: false,
       reason: null,
@@ -377,6 +401,11 @@ class OrchestratorAgent {
       sim.mode === 'practice' ||
       sim.is_practice === true;
 
+    // Extend max rounds by 2 upon deadlock detection (e.g. from 8/8 to 8/10, or 12/12 to 12/14)
+    const currentMaxRounds = Number(sim.max_rounds || (sim.scenario_id === 'job-offer' ? 8 : 12));
+    const extendedMaxRounds = currentMaxRounds + 2;
+    sim.max_rounds = extendedMaxRounds;
+
     const compromise = this.generateCompromiseProposal(sim);
     const compromiseMarker = '[DEADLOCK_COMPROMISE_ATTEMPTED]';
 
@@ -408,7 +437,7 @@ class OrchestratorAgent {
       sender_type: 'ORCHESTRATOR',
       sender_name: this.name,
       sender_role: this.role,
-      message: `${compromiseMarker} ⚠️ DEADLOCK DETECTED.\nReason: ${deadlockResolution.reason}\nNormal negotiation turn-taking has been paused. The Orchestrator has formulated a scenario-specific compromise proposal to resolve the impasse.`,
+      message: `${compromiseMarker} ⚠️ DEADLOCK DETECTED.\nReason: ${deadlockResolution.reason}\nNormal negotiation turn-taking has been paused. Round limit extended to ${extendedMaxRounds} rounds. The Orchestrator has formulated a scenario-specific compromise proposal to resolve the impasse.`,
       action: 'STATUS',
     });
 
@@ -430,6 +459,7 @@ class OrchestratorAgent {
     if (humanCount === 0) {
       // Simulation Mode (pure AI vs AI): execute automated resolution
       await db.updateSimulation(simulationId, {
+        max_rounds: extendedMaxRounds,
         deadlock_resolution: deadlockResolution,
         deadlock_reason: deadlockResolution.reason,
       });
@@ -448,6 +478,7 @@ class OrchestratorAgent {
       });
 
       await db.updateSimulation(simulationId, {
+        max_rounds: extendedMaxRounds,
         deadlock_resolution: deadlockResolution,
         deadlock_reason: deadlockResolution.reason,
       });
@@ -467,6 +498,7 @@ class OrchestratorAgent {
     const agents = sim.agents || [];
     const compromise = resolution.initial_compromise;
     const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
+    const scenarioId = (sim.scenario_id || '').toLowerCase();
 
     await db.addMessage({
       simulation_id: simulationId,
@@ -478,21 +510,88 @@ class OrchestratorAgent {
       action: 'STATUS',
     });
 
+    const agent0 = agents[0];
+    const agent1 = agents[1] || agents[0];
+
+    // Attempt 1 of 2: First agent evaluates compromise proposal and tables Counter-Offer (Attempt 1 of 2)
+    resolution.counter_offer_attempts = 1;
+    let attempt1Message = '';
+    if (scenarioId.includes('job') || scenarioId.includes('salary')) {
+      attempt1Message = `${agent0.name} (${agent0.role}): Counter-Offer (Attempt 1 of 2): In light of the Orchestrator's compromise proposal, we adjust our compensation offer to ₹${Number(compromise.offer_value).toLocaleString()} base salary with ${compromise.terms?.equity_grant || '0.15% equity grant'} and ${compromise.terms?.work_arrangement || 'Hybrid'} flexibility.`;
+    } else if (scenarioId.includes('budget') || scenarioId.includes('project')) {
+      attempt1Message = `${agent0.name} (${agent0.role}): Counter-Offer (Attempt 1 of 2): We propose aligning our department allocation with the Orchestrator's balanced framework (Engineering ₹${Number(compromise.terms?.engineering || 410000).toLocaleString()}, Marketing ₹${Number(compromise.terms?.marketing || 325000).toLocaleString()}, Product AI ₹${Number(compromise.terms?.product || 265000).toLocaleString()}).`;
+    } else {
+      attempt1Message = `${agent0.name} (${agent0.role}): Counter-Offer (Attempt 1 of 2): Based on the Orchestrator's compromise recommendation, we submit a revised commercial proposal of ₹${Number(compromise.offer_value).toLocaleString()} with ${compromise.terms?.payment_terms || 'Net-45 payment terms'} and ${compromise.terms?.delivery_timeline || '4-week delivery'}.`;
+    }
+
+    await db.addMessage({
+      simulation_id: simulationId,
+      round_number: sim.current_round,
+      sender_type: 'AGENT',
+      sender_name: agent0.name,
+      sender_role: agent0.role,
+      personality: agent0.personality,
+      message: attempt1Message,
+      offer_value: compromise.offer_value,
+      terms: compromise.terms,
+      action: 'COUNTER_OFFER',
+    });
+
+    // Orchestrator logs forwarding of Attempt 1
+    await db.addMessage({
+      simulation_id: simulationId,
+      round_number: sim.current_round,
+      sender_type: 'ORCHESTRATOR',
+      sender_name: this.name,
+      sender_role: this.role,
+      message: `⚖️ Orchestrator Agent: Counter-Offer (Attempt 1 of 2) logged. Forwarding proposal to counterpart for final evaluation (Attempt 2 of 2)...`,
+      action: 'STATUS',
+    });
+
+    // Attempt 2 of 2: Second agent evaluates Attempt 1
+    resolution.counter_offer_attempts = 2;
+
     if (!allAggressive) {
-      // Agents review and accept the equitable compromise
-      for (const agent of agents) {
-        await db.addMessage({
-          simulation_id: simulationId,
-          round_number: sim.current_round,
-          sender_type: 'AGENT',
-          sender_name: agent.name,
-          sender_role: agent.role,
-          personality: agent.personality,
-          message: `${agent.name} (${agent.role}): After reviewing the Orchestrator's compromise terms, we accept the proposal to achieve mutual commercial closure.`,
-          offer_value: compromise.offer_value,
-          terms: compromise.terms,
-          action: 'ACCEPT',
-        });
+      // Non-aggressive / cooperative: Accept the compromise
+      let attempt2Message = '';
+      if (scenarioId.includes('job') || scenarioId.includes('salary')) {
+        attempt2Message = `${agent1.name} (${agent1.role}): Resolution Evaluation (Attempt 2 of 2): We accept the revised compensation offer of ₹${Number(compromise.offer_value).toLocaleString()} with the agreed equity and hybrid terms. Consensus reached.`;
+      } else if (scenarioId.includes('budget') || scenarioId.includes('project')) {
+        attempt2Message = `${agent1.name} (${agent1.role}): Resolution Evaluation (Attempt 2 of 2): We accept the balanced departmental budget allocation to ensure project success across all teams.`;
+      } else {
+        attempt2Message = `${agent1.name} (${agent1.role}): Resolution Evaluation (Attempt 2 of 2): We accept the commercial proposal of ₹${Number(compromise.offer_value).toLocaleString()} with Net-45 payment terms to finalize the agreement.`;
+      }
+
+      await db.addMessage({
+        simulation_id: simulationId,
+        round_number: sim.current_round,
+        sender_type: 'AGENT',
+        sender_name: agent1.name,
+        sender_role: agent1.role,
+        personality: agent1.personality,
+        message: attempt2Message,
+        offer_value: compromise.offer_value,
+        terms: compromise.terms,
+        action: 'ACCEPT',
+      });
+
+      // If multilateral (3+ agents), have remaining agents also confirm acceptance
+      if (agents.length > 2) {
+        for (let i = 2; i < agents.length; i++) {
+          const extraAgent = agents[i];
+          await db.addMessage({
+            simulation_id: simulationId,
+            round_number: sim.current_round,
+            sender_type: 'AGENT',
+            sender_name: extraAgent.name,
+            sender_role: extraAgent.role,
+            personality: extraAgent.personality,
+            message: `${extraAgent.name} (${extraAgent.role}): Resolution Evaluation (Attempt 2 of 2): We confirm acceptance of the tripartite compromise allocation.`,
+            offer_value: compromise.offer_value,
+            terms: compromise.terms,
+            action: 'ACCEPT',
+          });
+        }
       }
 
       resolution.active = false;
@@ -519,7 +618,7 @@ class OrchestratorAgent {
         sender_type: 'ORCHESTRATOR',
         sender_name: this.name,
         sender_role: this.role,
-        message: `🎉 AGREEMENT REACHED! All participating AI agents have unanimously accepted the Orchestrator's compromise resolution. The negotiation concluded successfully.`,
+        message: `🎉 AGREEMENT REACHED! All participating AI agents have unanimously accepted the compromise resolution on Attempt 2 of 2. The negotiation concluded successfully.`,
         offer_value: compromise.offer_value,
         terms: compromise.terms,
         action: 'STATUS',
@@ -527,24 +626,7 @@ class OrchestratorAgent {
 
       return await db.getSimulation(simulationId);
     } else {
-      // All Aggressive: Attempt counter-offers up to limit (2 attempts)
-      resolution.counter_offer_attempts = 1;
-      const agent0 = agents[0];
-      const agent1 = agents[1] || agents[0];
-
-      await db.addMessage({
-        simulation_id: simulationId,
-        round_number: sim.current_round,
-        sender_type: 'AGENT',
-        sender_name: agent0.name,
-        sender_role: agent0.role,
-        personality: agent0.personality,
-        message: `${agent0.name}: Compromise terms are suboptimal given our strict risk posture. Counter-Offer (Attempt 1 of 2): We insist on firm margins.`,
-        offer_value: agent0.current_offer,
-        action: 'COUNTER_OFFER',
-      });
-
-      resolution.counter_offer_attempts = 2;
+      // All Aggressive: Inflexible rejection on Attempt 2 of 2
       await db.addMessage({
         simulation_id: simulationId,
         round_number: sim.current_round,
@@ -552,7 +634,7 @@ class OrchestratorAgent {
         sender_name: agent1.name,
         sender_role: agent1.role,
         personality: agent1.personality,
-        message: `${agent1.name}: Counter-Offer (Attempt 2 of 2): Our budget boundaries remain non-negotiable. We reject further concessions.`,
+        message: `${agent1.name} (${agent1.role}): Resolution Evaluation (Attempt 2 of 2): Our constraints remain strictly non-negotiable under our aggressive posture. We reject further concessions.`,
         offer_value: agent1.current_offer,
         action: 'REJECT',
       });
@@ -573,7 +655,7 @@ class OrchestratorAgent {
         sender_type: 'ORCHESTRATOR',
         sender_name: this.name,
         sender_role: this.role,
-        message: `Negotiation ended in Deadlock. Reason: All parties held unyielding aggressive positions and exhausted maximum counter-offer attempts. No agreement was reached.`,
+        message: `Negotiation ended in Deadlock. Reason: All parties held unyielding aggressive positions and exhausted maximum counter-offer attempts (2 of 2). No agreement was reached.`,
         action: 'STATUS',
       });
 
@@ -1547,33 +1629,49 @@ const fixedOffer =
     const uniqueOfferSenders = new Set(activeOfferMessages.map((m) => m.sender_role || m.sender_name));
     const allHaveOffered = uniqueOfferSenders.size >= agents.length;
     const bothHaveOffered = allHaveOffered;
-// Check whether the negotiation is reaching a deadlock
-const deadlock = this.detectDeadlock(updatedSim);
-const compromiseMarker = '[DEADLOCK_COMPROMISE_ATTEMPTED]';
-const compromiseAlreadyAttempted = (updatedSim.messages || []).some(
-  (message) =>
-    message.sender_type === 'ORCHESTRATOR' &&
-    message.message?.includes(compromiseMarker)
-);
+    updatedSim.current_gap = currentGap;
 
-let deadlockShouldStop =
-  deadlock.detected && compromiseAlreadyAttempted;
-
-if (deadlock.detected && !compromiseAlreadyAttempted) {
-  const resolvedState = await this.initiateDeadlockResolution(simulationId, deadlock);
-  return {
-    simulation: resolvedState,
-    advanced: true,
-    deadlockInitiated: true,
-    waitingForHuman: isPractice,
-    turnTakenBy: activeAgent.role,
-    action: move.action,
-    offerValue: move.offer_value,
-    message: `Deadlock detected: ${deadlock.reason}. Compromise proposal presented.`,
-  };
-}
-    // Compute dynamic agreement likelihood %
+    // Check whether the negotiation is reaching a deadlock
     const threshold = typeof preset.agreement_threshold === 'number' ? preset.agreement_threshold : 0;
+    const isLastRoundEnd = isRoundEnd && Number(sim.current_round) >= Number(sim.max_rounds || 10);
+    const hasAgreementSoFar =
+      move.action === 'ACCEPT' ||
+      move.agreement_reached === true ||
+      (currentGap <= threshold && currentGap <= 0);
+
+    let deadlock = this.detectDeadlock(updatedSim);
+    if (!deadlock.detected && isLastRoundEnd && !hasAgreementSoFar) {
+      deadlock = {
+        detected: true,
+        reason: `Maximum round limit (${sim.max_rounds || 10}) reached without agreement. Final gap remained ₹${Number(currentGap || 0).toLocaleString()}.`,
+        type: 'MAX_ROUNDS_REACHED',
+      };
+    }
+
+    const compromiseMarker = '[DEADLOCK_COMPROMISE_ATTEMPTED]';
+    const compromiseAlreadyAttempted = (updatedSim.messages || []).some(
+      (message) =>
+        message.sender_type === 'ORCHESTRATOR' &&
+        message.message?.includes(compromiseMarker)
+    );
+
+    let deadlockShouldStop =
+      deadlock.detected && compromiseAlreadyAttempted;
+
+    if (deadlock.detected && !compromiseAlreadyAttempted) {
+      const resolvedState = await this.initiateDeadlockResolution(simulationId, deadlock);
+      return {
+        simulation: resolvedState,
+        advanced: true,
+        deadlockInitiated: true,
+        waitingForHuman: isPractice,
+        turnTakenBy: activeAgent.role,
+        action: move.action,
+        offerValue: move.offer_value,
+        message: `Deadlock detected: ${deadlock.reason}. Compromise proposal presented.`,
+      };
+    }
+    // Compute dynamic agreement likelihood %
     const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
     let likelihood = allAggressive
       ? Math.max(10, Math.round(35 - (sim.current_round / (sim.max_rounds || 10)) * 20))

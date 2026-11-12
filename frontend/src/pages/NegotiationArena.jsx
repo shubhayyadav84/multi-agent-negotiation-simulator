@@ -1221,8 +1221,11 @@ const NegotiationArena = () => {
     };
   });
 
-  const buyerAgent = activeAgentsList[0] || {};
-  const sellerAgent = activeAgentsList[1] || {};
+  const buyerAgent = activeAgentsList.find((a) => {
+    const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+    return k.includes('buyer') || k.includes('procurement') || k.includes('purchas') || k.includes('client') || k.includes('recruiter') || k.includes('hiring');
+  }) || activeAgentsList[0] || {};
+  const sellerAgent = activeAgentsList.find((a) => a !== buyerAgent) || activeAgentsList[1] || {};
   const humanAgent = activeAgentsList.find(
     (a) => a.id === location.state?.userRoleAgentId || a.personality === 'Human' || a.is_human === true
   ) || (location.state?.userSide === 'seller' ? activeAgentsList[1] : activeAgentsList[0]);
@@ -1318,17 +1321,38 @@ const NegotiationArena = () => {
       const totalDemanded = activeAgentsList.reduce((sum, a) => sum + (Number(a.current_offer) || 0), 0);
       return Math.max(0, totalDemanded - 1000000);
     }
-    const buyerOffer = Number(activeAgentsList[0]?.current_offer || 0);
-    const sellerOffer = Number(activeAgentsList[1]?.current_offer || 0);
-    if (buyerOffer > 0 && sellerOffer > 0) {
-      if (currentScenarioId === 'vendor-pricing' || currentScenarioId === 'job-offer') {
-        return buyerOffer >= sellerOffer ? 0 : (sellerOffer - buyerOffer);
+    if (currentScenarioId === 'job-offer') {
+      const recruiter = activeAgentsList.find((a) => {
+        const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+        return k.includes('recruiter') || k.includes('hiring') || k.includes('talent');
+      }) || activeAgentsList[0];
+      const candidate = activeAgentsList.find((a) => a !== recruiter) || activeAgentsList[1];
+      const rOffer = Number(recruiter?.current_offer || 0);
+      const cOffer = Number(candidate?.current_offer || 0);
+      if (rOffer > 0 && cOffer > 0) {
+        return rOffer >= cOffer ? 0 : (cOffer - rOffer);
       }
-      return Math.abs(buyerOffer - sellerOffer);
+      return typeof simulation?.current_gap === 'number' && simulation.current_gap >= 0
+        ? simulation.current_gap
+        : Math.abs(rOffer - cOffer);
+    }
+
+    // Default: Vendor Pricing (or bilateral commercial)
+    const buyer = activeAgentsList.find((a) => {
+      const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+      return k.includes('buyer') || k.includes('procurement') || k.includes('purchasing') || k.includes('client');
+    }) || activeAgentsList[0];
+    const seller = activeAgentsList.find((a) => a !== buyer) || activeAgentsList[1];
+
+    const buyerOffer = Number(buyer?.current_offer || 0);
+    const sellerOffer = Number(seller?.current_offer || 0);
+
+    if (buyerOffer > 0 && sellerOffer > 0) {
+      return buyerOffer >= sellerOffer ? 0 : (sellerOffer - buyerOffer);
     }
     return typeof simulation?.current_gap === 'number' && simulation.current_gap >= 0
       ? simulation.current_gap
-      : 0;
+      : (buyerOffer > 0 || sellerOffer > 0 ? Math.abs(buyerOffer - sellerOffer) : 15000);
   })();
 
   const isAllAggressive = activeAgentsList.length > 0 && activeAgentsList.every(
@@ -1343,7 +1367,10 @@ const NegotiationArena = () => {
     if (isAllAggressive && simulation?.status === 'DEADLOCK' && !simulation?.deadlock_resolution?.active) {
       return 10;
     }
-    if (currentGap === 0) return 100;
+    const nonZeroOffers = activeAgentsList.filter((a) => Number(a.current_offer) > 0);
+    if (currentGap === 0 && nonZeroOffers.length >= (currentScenarioId === 'project-budget' ? 3 : 2)) {
+      return 100;
+    }
     let calculated = 50;
     if (currentScenarioId === 'vendor-pricing') {
       calculated = Math.round(100 - (currentGap / 300) + (currentRound * 3));

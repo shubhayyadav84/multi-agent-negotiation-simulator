@@ -1149,7 +1149,9 @@ const NegotiationArena = () => {
     const resolvedCurrentOffer =
       latestOfferFromMessages !== null
         ? latestOfferFromMessages
-        : (simAgent.current_offer || defaultInitialOffer);
+        : (isPracticeMode && isHumanParticipant
+            ? 0
+            : (simAgent.current_offer || defaultInitialOffer));
 
     const isDealAgreed =
       simulation?.status === 'COMPLETED' ||
@@ -1185,7 +1187,9 @@ const NegotiationArena = () => {
     }
 
     let resolvedProgress = simAgent.progress_percent || 50;
-    if (isDealAgreed) {
+    if (isPracticeMode && isHumanParticipant && latestOfferFromMessages === null) {
+      resolvedProgress = 0;
+    } else if (isDealAgreed) {
       resolvedProgress = 100;
     } else if (initialOfferFromMessages && resolvedCurrentOffer) {
       const shift = Math.abs(resolvedCurrentOffer - initialOfferFromMessages);
@@ -2446,9 +2450,23 @@ const NegotiationArena = () => {
                   : (agent.personality || '').toLowerCase().includes('risk')
                   ? 'risk-averse'
                   : 'collaborative';
-                const offerVal = agent.current_offer || (isFirst ? 9000 : 10000);
+                const isUserInPractice = Boolean(
+                  isPracticeMode && humanAgent && (
+                    agent.id === humanAgent.id ||
+                    agent.role === humanAgent.role ||
+                    (location.state?.userRoleAgentId && agent.id === location.state.userRoleAgentId)
+                  )
+                );
+                const hasUserSentMsg = (simulation?.messages || []).some(
+                  (m) => m.sender_type === 'HUMAN' && m.offer_value !== undefined && m.offer_value !== null && Number(m.offer_value) > 0
+                );
+                const offerVal = (isUserInPractice && !hasUserSentMsg)
+                  ? 0
+                  : (agent.current_offer !== undefined && agent.current_offer !== null
+                      ? agent.current_offer
+                      : (isFirst ? 9000 : 10000));
                 const stanceVal = agent.stance || (isFirst ? 'Seeking agreement' : 'Holding firm');
-                const progressVal = agent.progress_percent || (isFirst ? 70 : 60);
+                const progressVal = (isUserInPractice && !hasUserSentMsg) ? 0 : (agent.progress_percent || (isFirst ? 70 : 60));
 
                 return (
                   <div key={agent.id || `agent-item-${idx}`} className="arena-agent-item-card">
@@ -2653,13 +2671,13 @@ const NegotiationArena = () => {
               <div style={{ textAlign: 'center' }}>
                 <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Rounds Concluded</span>
                 <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-                  {simulation?.current_round || 1} / {simulation?.max_rounds || 10}
+                  {currentRound} / {maxRounds}
                 </span>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Offers Exchanged</span>
                 <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#6366f1' }}>
-                  {(simulation?.messages || []).filter(m => m.offer_value).length}
+                  {offersCount}
                 </span>
               </div>
             </div>

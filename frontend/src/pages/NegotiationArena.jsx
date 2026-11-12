@@ -1096,16 +1096,22 @@ const NegotiationArena = () => {
     const agentRoleLower = (simAgent.role || metaAgent.role || '').toLowerCase();
     const agentNameLower = (simAgent.name || metaAgent.name || '').toLowerCase();
     const isHumanParticipant = Boolean(
-      metaAgent?.personality === 'Human' ||
-      metaAgent?.is_human === true ||
-      simAgent?.personality === 'Human' ||
-      simAgent?.is_human === true ||
-      (isPracticeMode && (
-        agentId === location.state?.userRoleAgentId ||
-        metaAgent?.id === location.state?.userRoleAgentId ||
-        simAgent?.id === location.state?.userRoleAgentId ||
-        (location.state?.userSide === 'seller' ? idx === 1 : idx === 0)
-      ))
+      isPracticeMode && (
+        (location.state?.userRoleAgentId && (
+          agentId === location.state.userRoleAgentId ||
+          metaAgent?.id === location.state.userRoleAgentId ||
+          simAgent?.id === location.state.userRoleAgentId
+        )) ||
+        simAgent?.personality === 'Human' ||
+        simAgent?.is_human === true ||
+        metaAgent?.personality === 'Human' ||
+        metaAgent?.is_human === true ||
+        (location.state?.userSide
+          ? (location.state.userSide === 'seller'
+              ? (agentRoleLower.includes('seller') || agentRoleLower.includes('vendor') || agentRoleLower.includes('sales'))
+              : (agentRoleLower.includes('buyer') || agentRoleLower.includes('procurement') || agentRoleLower.includes('purchasing')))
+          : (agentRoleLower.includes('buyer') || agentRoleLower.includes('procurement') || agentRoleLower.includes('candidate')))
+      )
     );
 
     let latestOfferFromMessages = null;
@@ -1663,16 +1669,17 @@ const NegotiationArena = () => {
                         }) || (turnIdx % 2 === 0 ? activeAgentsList[0] : activeAgentsList[1]);
 
                         // Determine if message is from human
-                        const isHumanMsg = Boolean(
-                          msg.sender_type === 'HUMAN' ||
-                          msg.personality === 'Human' ||
-                          msg.is_human === true ||
-                          (isPracticeMode && senderAgent && (
-                            senderAgent.id === location.state?.userRoleAgentId ||
-                            senderAgent.personality === 'Human' ||
-                            senderAgent.is_human === true
-                          ))
-                        );
+                        const isHumanMsg = isPracticeMode
+                          ? (msg.sender_type === 'HUMAN' || (msg.sender_type !== 'AGENT' && msg.sender_type !== 'ORCHESTRATOR' && (
+                              (location.state?.userRoleAgentId && senderAgent?.id === location.state.userRoleAgentId) ||
+                              senderAgent?.personality === 'Human' ||
+                              senderAgent?.is_human === true
+                            )))
+                          : Boolean(
+                              msg.sender_type === 'HUMAN' ||
+                              msg.personality === 'Human' ||
+                              msg.is_human === true
+                            );
 
                         // Deterministic side placement:
                         // Practice Mode: AI counterpart is on LEFT, Human user is on RIGHT.
@@ -2459,13 +2466,11 @@ const NegotiationArena = () => {
                           <span className="arena-agent-main-role">{getFormattedAgentTitle(agent, 'agent-status')}</span>
                           {(() => {
                             const isHumanParticipant = Boolean(
-                              agent.personality === 'Human' ||
-                              agent.is_human === true ||
-                              (isPracticeMode && (
-                                agent.id === location.state?.userRoleAgentId ||
-                                agent.id === humanAgent?.id ||
-                                agent.role === humanAgent?.role
-                              ))
+                              isPracticeMode && humanAgent && (
+                                agent.id === humanAgent.id ||
+                                agent.role === humanAgent.role ||
+                                (location.state?.userRoleAgentId && agent.id === location.state.userRoleAgentId)
+                              )
                             );
                             return (
                               <span className={`arena-role-pill ${isHumanParticipant ? 'human' : rolePillClass}`}>

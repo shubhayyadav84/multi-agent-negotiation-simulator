@@ -710,6 +710,67 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     assert.ok(['Compromising', 'Agreed'].includes(humanInSim.stance), 'Human agent stance must update dynamically');
   });
 
+  await test('20. Practice Mode: 0-Offer initialization & 3-Message non-offer limit triggers Deadlock', async () => {
+    // 1. In Practice Mode, human participant's current_offer must initialize to 0
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'seller', role: 'Seller', name: 'Seller', personality: 'Collaborative', current_offer: 110000 },
+        { id: 'buyer', role: 'Buyer', name: 'Buyer', personality: 'Human', is_human: true },
+      ],
+    });
+
+    const humanAgent = sim.agents.find((a) => a.is_human === true || a.personality === 'Human');
+    assert.strictEqual(humanAgent.current_offer, 0, 'Human participant current_offer must initialize to 0 before typing any offer');
+
+    // 2. Human sends message without offer (e.g. "hi") -> Attempt 1 of 3
+    const step1 = await orchestratorService.advanceStep(sim.id, {
+      message: 'hi',
+      sender_role: 'Buyer',
+      sender_name: 'Buyer',
+      is_human: true,
+    });
+    const simAfter1 = await db.getSimulation(sim.id);
+    const humanAfter1 = simAfter1.agents.find((a) => a.is_human);
+    assert.strictEqual(humanAfter1.current_offer, 0, 'Human participant current_offer must remain 0 after sending "hi"');
+    const noticeMsg = (simAfter1.messages || []).find(m => m.message?.includes('Attempt 1 of 3 non-offer messages'));
+    assert.ok(noticeMsg, 'Notice (Attempt 1 of 3) must be posted after 1st non-offer message');
+
+    // AI counter turn
+    await orchestratorService.advanceStep(sim.id);
+
+    // 3. Human sends 2nd non-offer message -> Attempt 2 of 3
+    await orchestratorService.advanceStep(sim.id, {
+      message: 'hello there',
+      sender_role: 'Buyer',
+      sender_name: 'Buyer',
+      is_human: true,
+    });
+    const simAfter2 = await db.getSimulation(sim.id);
+    const warnMsg = (simAfter2.messages || []).find(m => m.message?.includes('Attempt 2 of 3'));
+    assert.ok(warnMsg, 'Warning (Attempt 2 of 3) must be posted after 2nd non-offer message');
+
+    // AI counter turn
+    await orchestratorService.advanceStep(sim.id);
+
+    // 4. Human sends 3rd non-offer message -> Deadlock initiated!
+    const step3 = await orchestratorService.advanceStep(sim.id, {
+      message: 'what is your offer',
+      sender_role: 'Buyer',
+      sender_name: 'Buyer',
+      is_human: true,
+    });
+
+    const simAfter3 = await db.getSimulation(sim.id);
+    assert.ok(simAfter3.deadlock_resolution?.active, 'Deadlock resolution must be active after 3rd non-offer message');
+    assert.strictEqual(simAfter3.deadlock_resolution.type, 'NON_OFFER_DEADLOCK', 'Deadlock type must be NON_OFFER_DEADLOCK');
+    const dlNotice = (simAfter3.messages || []).find(m => m.message?.includes('DEADLOCK DETECTED') && m.message?.includes('Maximum limit of 3 consecutive messages without a numerical offer'));
+    assert.ok(dlNotice, 'Deadlock Notice explaining 3 consecutive messages limit must be posted');
+    const dlInstr = (simAfter3.messages || []).find(m => m.message?.includes('maximum of 2 counter-offer attempts'));
+    assert.ok(dlInstr, 'Deadlock Instruction for 2 counter-offer attempts must be posted in Practice Mode');
+  });
+
   console.log(`\n========================================`);
   console.log(`Results: ${passedCount} Passed, ${failedCount} Failed`);
   console.log(`========================================\n`);

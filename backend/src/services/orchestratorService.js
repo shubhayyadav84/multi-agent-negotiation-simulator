@@ -236,6 +236,33 @@ class OrchestratorAgent {
       };
     }
 
+    // Check for consecutive non-offer messages from human in Practice Mode (Strict limit of 3 non-monetary messages)
+    const humanCount = agents.filter(a => a.is_human === true || a.personality === 'Human').length;
+    const isPractice = (simulation.id && simulation.id.startsWith('practice_')) ||
+      (humanCount > 0 && humanCount < agents.length) ||
+      simulation.mode === 'practice' ||
+      simulation.is_practice === true;
+
+    if (isPractice) {
+      const humanMsgs = messages.filter(m => m.sender_type === 'HUMAN');
+      let trailingNonOffer = 0;
+      for (let i = humanMsgs.length - 1; i >= 0; i--) {
+        const m = humanMsgs[i];
+        if (m.offer_value === undefined || m.offer_value === null || Number(m.offer_value) <= 0) {
+          trailingNonOffer++;
+        } else {
+          break;
+        }
+      }
+      if (trailingNonOffer >= 3) {
+        return {
+          detected: true,
+          reason: 'Impasse reached: Maximum limit of 3 consecutive messages without a numerical offer was reached.',
+          type: 'NON_OFFER_DEADLOCK',
+        };
+      }
+    }
+
     return {
       detected: false,
       reason: null,
@@ -1263,9 +1290,13 @@ class OrchestratorAgent {
             ...ca,
             personality: ca.personality || presetMatch.personality || 'Collaborative',
             is_human: isHuman,
+            current_offer: isPractice && isHuman ? 0 : (ca.current_offer !== undefined ? ca.current_offer : presetMatch.current_offer),
           };
         })
-      : preset.agents;
+      : preset.agents.map((pa) => ({
+          ...pa,
+          current_offer: isPractice && (pa.is_human === true || pa.personality === 'Human') ? 0 : pa.current_offer,
+        }));
 
     // Apply Practice Mode opening order:
     // In Practice Mode, the AI counterpart ALWAYS starts with the opening offer,
@@ -1642,24 +1673,33 @@ class OrchestratorAgent {
       const hasProposal = /\b(propose|counter|offer|how about|what about|settle at|instead|rather|my offer|my price)\b/i.test(lowerMsg) || (offerVal !== null && offerVal !== undefined);
       const hasConditional = /\b(if\b|unless|but\b|however|provided that)\b/i.test(lowerMsg);
 
-      if (!humanAction || humanAction === 'COUNTER_OFFER' || humanAction === 'STATUS' || humanAction === 'OFFER') {
+      if (!humanAction || humanAction === 'COUNTER_OFFER' || humanAction === 'STATUS' || humanAction === 'OFFER' || humanAction === 'MESSAGE') {
         if (!hasConditional && !hasProposal) {
           if (/\b(accept\b|agreed?\b|we have a deal|that works for me|finalize this|happy with this (?:deal|agreement|offer))\b/i.test(lowerMsg)) {
             humanAction = 'ACCEPT';
           } else if (/\b(reject\b|cannot accept|can't accept|not acceptable|end this negotiation|decline\b|no deal|walk away)\b/i.test(lowerMsg)) {
             humanAction = 'REJECT';
+          } else {
+            humanAction = 'MESSAGE';
           }
         } else if (hasProposal && offerVal !== null) {
           humanAction = 'COUNTER_OFFER';
+        } else if (offerVal === null) {
+          humanAction = 'MESSAGE';
         }
+      }
+
+      const isNonOffer = (offerVal === null || offerVal === undefined) && humanAction !== 'ACCEPT' && humanAction !== 'REJECT';
+      if (isNonOffer) {
+        humanAction = 'MESSAGE';
       }
 
       move = {
         message: customMove.message,
         offer_value: offerVal,
-        action: humanAction || (offerVal !== null ? 'COUNTER_OFFER' : 'STATUS'),
-        stance: customMove.stance || 'Human proposal',
-        progress_percent: Math.min((activeAgent.progress_percent || 40) + 10, 95),
+        action: humanAction || (offerVal !== null ? 'COUNTER_OFFER' : 'MESSAGE'),
+        stance: customMove.stance || (isNonOffer ? 'In dialogue' : 'Human proposal'),
+        progress_percent: isNonOffer ? (activeAgent.progress_percent || 0) : Math.min((activeAgent.progress_percent || 40) + 10, 95),
         terms: customMove.terms || {},
       };
     } else {
@@ -1740,7 +1780,7 @@ const fixedOffer =
     });
 
     // 5. Record discrete numerical offer & update agent current standing
-    if (move.offer_value !== undefined && move.offer_value !== null) {
+    if (move.offer_value !== undefined && move.offer_value !== null && Number(move.offer_value) > 0) {
       await db.addOffer({
         simulation_id: simulationId,
         round_number: sim.current_round,
@@ -1754,6 +1794,42 @@ const fixedOffer =
         stance: move.stance || 'In negotiation',
         progress_percent: move.progress_percent || 60,
       });
+
+      await db.updateSimulation(simulationId, { consecutive_non_offer_count: 0 });
+    } else if (isPractice && isHumanTurn && move.action === 'MESSAGE') {
+      const refreshedSimForCount = await db.getSimulation(simulationId);
+      const humanMsgs = (refreshedSimForCount.messages || []).filter(m => m.sender_type === 'HUMAN');
+      let trailingNonOffer = 0;
+      for (let i = humanMsgs.length - 1; i >= 0; i--) {
+        const m = humanMsgs[i];
+        if (m.offer_value === undefined || m.offer_value === null || Number(m.offer_value) <= 0) {
+          trailingNonOffer++;
+        } else {
+          break;
+        }
+      }
+
+      if (trailingNonOffer === 1) {
+        await db.addMessage({
+          simulation_id: simulationId,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: this.name,
+          sender_role: this.role,
+          message: `ℹ️ Notice: No numerical offer detected in your message. Please state a concrete amount (e.g. 'I propose ₹95,000') to advance the negotiation (Attempt 1 of 3 non-offer messages).`,
+          action: 'STATUS',
+        });
+      } else if (trailingNonOffer === 2) {
+        await db.addMessage({
+          simulation_id: simulationId,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: this.name,
+          sender_role: this.role,
+          message: `⚠️ Warning: Second message without a numerical offer detected (Attempt 2 of 3). A maximum of 3 messages without an offer are allowed. If a 3rd message without a number is sent, Deadlock will be declared.`,
+          action: 'STATUS',
+        });
+      }
     }
 
     // 6. Refresh simulation to inspect all latest agent offers

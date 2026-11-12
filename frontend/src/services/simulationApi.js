@@ -514,7 +514,14 @@ function createLocalSimulation(scenarioId = 'vendor-pricing', customAgents = nul
   const hasHuman = effectiveAgents.some((a) => a.is_human === true || a.personality === 'Human');
   if (hasHuman) {
     const aiAgents = effectiveAgents.filter((a) => a.personality !== 'Human' && a.is_human !== true);
-    const humanAgents = effectiveAgents.filter((a) => a.personality === 'Human' || a.is_human === true);
+    const humanAgents = effectiveAgents
+      .filter((a) => a.personality === 'Human' || a.is_human === true)
+      .map((ha) => ({
+        ...ha,
+        current_offer: 0,
+        stance: 'Awaiting offer',
+        progress_percent: 0,
+      }));
     if (aiAgents.length > 0 && humanAgents.length > 0) {
       effectiveAgents = [...aiAgents, ...humanAgents];
     }
@@ -661,8 +668,26 @@ function advanceLocalSimulation(simulationId, customMove = null) {
 
   if (isHumanTurn && customMove) {
     moveMessage = customMove.message || 'I propose our revised allocation.';
-    moveOffer = customMove.offer_value !== undefined ? customMove.offer_value : activeAgent.current_offer;
-    moveAction = customMove.action || 'COUNTER_OFFER';
+    const rawVal = customMove.offer_value;
+    const isOfferValid = rawVal !== undefined && rawVal !== null && Number(rawVal) > 0;
+    moveOffer = isOfferValid ? Number(rawVal) : null;
+
+    const lowerMsg = (moveMessage || '').toLowerCase();
+    const hasConditional = /\b(if\b|unless|but\b|however|provided that)\b/i.test(lowerMsg);
+    const hasProposal = /\b(propose|counter|offer|how about|what about|settle at|instead|rather|my offer|my price)\b/i.test(lowerMsg) || isOfferValid;
+
+    if (customMove.action && customMove.action !== 'COUNTER_OFFER' && customMove.action !== 'OFFER' && customMove.action !== 'MESSAGE') {
+      moveAction = customMove.action;
+    } else if (!hasConditional && !hasProposal && /\b(accept\b|agreed?\b|we have a deal|that works for me|finalize this|happy with this (?:deal|agreement|offer))\b/i.test(lowerMsg)) {
+      moveAction = 'ACCEPT';
+    } else if (!hasConditional && !hasProposal && /\b(reject\b|cannot accept|can't accept|not acceptable|end this negotiation|decline\b|no deal|walk away)\b/i.test(lowerMsg)) {
+      moveAction = 'REJECT';
+    } else if (isOfferValid) {
+      moveAction = 'COUNTER_OFFER';
+    } else {
+      moveAction = 'MESSAGE';
+    }
+
     if (customMove.terms) {
       sim.humanProposedTerms = { ...customMove.terms };
     }
@@ -820,12 +845,14 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     }
   }
 
-  // Update agent offer
-  activeAgent.current_offer = moveOffer;
+  // Update agent offer only when a valid numerical offer is provided
+  if (moveOffer !== null && moveOffer !== undefined && Number(moveOffer) > 0) {
+    activeAgent.current_offer = moveOffer;
+  }
 
-  // Append offer to history
+  // Append offer to history only when a valid numerical offer is provided
   const updatedOffers = Array.isArray(sim.offers) ? [...sim.offers] : [];
-  if (moveOffer !== null && moveOffer !== undefined) {
+  if (moveOffer !== null && moveOffer !== undefined && Number(moveOffer) > 0) {
     updatedOffers.push({
       round_number: sim.current_round,
       agent_role: activeAgent.role,
@@ -884,8 +911,53 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     },
   ];
 
+  let nonOfferDeadlockTriggered = false;
+  if (isHumanTurn && moveAction === 'MESSAGE') {
+    const humanMsgs = newMessages.filter((m) => m.sender_type === 'HUMAN');
+    let trailingNonOffer = 0;
+    for (let i = humanMsgs.length - 1; i >= 0; i--) {
+      const m = humanMsgs[i];
+      if (m.offer_value === undefined || m.offer_value === null || Number(m.offer_value) <= 0) {
+        trailingNonOffer++;
+      } else {
+        break;
+      }
+    }
+
+    if (trailingNonOffer === 1) {
+      newMessages.push({
+        id: `msg_local_notice_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `ℹ️ Notice: No numerical offer detected in your message. Please state a concrete amount (e.g. 'I propose ₹95,000') to advance the negotiation (Attempt 1 of 3 non-offer messages).`,
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+    } else if (trailingNonOffer === 2) {
+      newMessages.push({
+        id: `msg_local_warn_${Date.now()}`,
+        round_number: sim.current_round,
+        sender_type: 'ORCHESTRATOR',
+        sender_name: 'Orchestrator Agent',
+        sender_role: 'Orchestrator',
+        message: `⚠️ Warning: Second message without a numerical offer detected (Attempt 2 of 3). A maximum of 3 messages without an offer are allowed. If a 3rd message without a number is sent, Deadlock will be declared.`,
+        action: 'STATUS',
+        timestamp_label: timeStr,
+      });
+    } else if (trailingNonOffer >= 3) {
+      nonOfferDeadlockTriggered = true;
+    }
+  }
+
   let nextRound = sim.current_round;
   let status = sim.status;
+
+  const compromiseMarker = '[DEADLOCK_COMPROMISE_ATTEMPTED]';
+  const compromiseAlreadyAttempted = newMessages.some(
+    (m) => m.sender_type === 'ORCHESTRATOR' && (m.message || '').includes(compromiseMarker)
+  );
 
   if (moveAction === 'ACCEPT') {
     status = 'COMPLETED';
@@ -899,17 +971,11 @@ function advanceLocalSimulation(simulationId, customMove = null) {
       action: 'STATUS',
       timestamp_label: timeStr,
     });
-  } else if (isRoundEnd) {
-    const compromiseMarker = '[DEADLOCK_COMPROMISE_ATTEMPTED]';
-    const compromiseAlreadyAttempted = newMessages.some(
-      (m) => m.sender_type === 'ORCHESTRATOR' && (m.message || '').includes(compromiseMarker)
-    );
-
-    if (sim.current_round >= maxR && !compromiseAlreadyAttempted) {
-      // Impasse reached at round limit without agreement: Initiate Universal Deadlock Resolution!
-      const extendedMaxR = maxR + 2;
-      sim.max_rounds = extendedMaxR;
-      const sId = (sim.scenario_id || '').toLowerCase();
+  } else if ((nonOfferDeadlockTriggered || (isRoundEnd && sim.current_round >= maxR)) && !compromiseAlreadyAttempted) {
+    // Impasse reached: Initiate Universal Deadlock Resolution!
+    const extendedMaxR = maxR + 2;
+    sim.max_rounds = extendedMaxR;
+    const sId = (sim.scenario_id || '').toLowerCase();
       const isPractice = (sim.id && sim.id.startsWith('practice_')) ||
         agents.some((a) => a.is_human === true || a.personality === 'Human') ||
         sim.mode === 'practice' ||
@@ -951,11 +1017,16 @@ function advanceLocalSimulation(simulationId, customMove = null) {
         };
       }
 
+      const deadlockReason = nonOfferDeadlockTriggered
+        ? 'Impasse reached: Maximum limit of 3 consecutive messages without a numerical offer was reached.'
+        : `Maximum round limit (${maxR}) reached without agreement. Final gap remained ₹${Number(currentGapCalc || 0).toLocaleString()}.`;
+
       const deadlockRes = {
         active: true,
         status: isPractice ? 'AWAITING_DECISION' : 'AWAITING_AI_EVALUATION',
         detected_at_round: sim.current_round,
-        reason: `Maximum round limit (${maxR}) reached without agreement. Final gap remained ₹${Number(currentGapCalc || 0).toLocaleString()}.`,
+        reason: deadlockReason,
+        type: nonOfferDeadlockTriggered ? 'NON_OFFER_DEADLOCK' : 'MAX_ROUNDS_REACHED',
         initial_compromise: compromise,
         latest_proposal: compromise,
         counter_offer_attempts: 0,
@@ -1122,34 +1193,35 @@ function advanceLocalSimulation(simulationId, customMove = null) {
           timestamp_label: timeStr,
         });
       }
-    } else if (sim.current_round >= maxR) {
-      status = 'DEADLOCK';
-      newMessages.push({
-        id: `msg_local_deadlock_${Date.now()}`,
-        round_number: sim.current_round,
-        sender_type: 'ORCHESTRATOR',
-        sender_name: 'Orchestrator Agent',
-        sender_role: 'Orchestrator',
-        message: allAggressive
-          ? `Maximum round limit (${maxR}) reached without agreement. All parties maintained aggressive unyielding stances. Negotiation concluded in Deadlock.`
-          : `Maximum round limit (${maxR}) reached without agreement. Negotiation concluded in Deadlock.`,
-        action: 'STATUS',
-        timestamp_label: timeStr,
-      });
-    } else {
-      nextRound = sim.current_round + 1;
-      newMessages.push({
-        id: `msg_local_round_${Date.now()}`,
-        round_number: sim.current_round,
-        sender_type: 'ORCHESTRATOR',
-        sender_name: 'Orchestrator Agent',
-        sender_role: 'Orchestrator',
-        message: `Round ${sim.current_round} concluded. Advancing to Round ${nextRound}...`,
-        action: 'STATUS',
-        timestamp_label: timeStr,
-      });
+    } else if (isRoundEnd) {
+      if (sim.current_round >= maxR) {
+        status = 'DEADLOCK';
+        newMessages.push({
+          id: `msg_local_deadlock_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: 'Orchestrator Agent',
+          sender_role: 'Orchestrator',
+          message: allAggressive
+            ? `Maximum round limit (${maxR}) reached without agreement. All parties maintained aggressive unyielding stances. Negotiation concluded in Deadlock.`
+            : `Maximum round limit (${maxR}) reached without agreement. Negotiation concluded in Deadlock.`,
+          action: 'STATUS',
+          timestamp_label: timeStr,
+        });
+      } else {
+        nextRound = sim.current_round + 1;
+        newMessages.push({
+          id: `msg_local_round_${Date.now()}`,
+          round_number: sim.current_round,
+          sender_type: 'ORCHESTRATOR',
+          sender_name: 'Orchestrator Agent',
+          sender_role: 'Orchestrator',
+          message: `Round ${sim.current_round} concluded. Advancing to Round ${nextRound}...`,
+          action: 'STATUS',
+          timestamp_label: timeStr,
+        });
+      }
     }
-  }
 
   const updatedSim = {
     ...sim,

@@ -224,6 +224,13 @@ const renderActionBadge = (actionStr, msg = null, allMessages = []) => {
       </span>
     );
   }
+  if (act === 'MESSAGE' || act === 'DISCUSSION' || act === 'STATUS' || (!msg?.offer_value && act !== 'DEADLOCK_PROPOSAL')) {
+    return (
+      <span className="arena-action-badge action-message" style={{ background: '#f1f5f9', color: '#64748b', borderColor: '#cbd5e1' }}>
+        <MessageSquare size={11} /> MESSAGE
+      </span>
+    );
+  }
   if (act === 'COUNTER_OFFER') {
     return (
       <span className="arena-action-badge action-counter">
@@ -627,7 +634,7 @@ const NegotiationArena = () => {
       numericOffer = extractedOffer;
     } else {
       // General message / conversational response without monetary proposal
-      actionType = isOpeningMove ? 'OFFER' : 'COUNTER_OFFER';
+      actionType = 'MESSAGE';
       numericOffer = null;
     }
 
@@ -1164,7 +1171,9 @@ const NegotiationArena = () => {
       !simulation?.deadlock_resolution?.active;
 
     let resolvedStance = simAgent.stance || (idx === 0 ? 'Holding firm' : 'Evaluating terms');
-    if (isDealAgreed) {
+    if (isPracticeMode && isHumanParticipant && latestOfferFromMessages === null) {
+      resolvedStance = latestActionFromMessages === 'MESSAGE' ? 'In dialogue' : 'Awaiting offer';
+    } else if (isDealAgreed) {
       resolvedStance = 'Agreed';
     } else if (latestActionFromMessages === 'REJECT') {
       resolvedStance = 'Firm';

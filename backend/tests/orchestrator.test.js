@@ -647,6 +647,69 @@ await test('13. Compromise proposal is attempted before final deadlock', async (
     assert.ok(msgs.some((m) => m.includes('AGREEMENT REACHED')), 'Transcript must show final AGREEMENT REACHED notice');
   });
 
+  await test('19. Post-Deadlock Updates: Negotiation Metrics & Agent Status update after deadlock rounds in Simulation & Practice Mode', async () => {
+    // 1. Simulation Mode (AI vs AI)
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 4,
+      customAgents: [
+        { id: 'buyer', role: 'Buyer', name: 'Buyer', personality: 'Collaborative', current_offer: 95000 },
+        { id: 'seller', role: 'Seller', name: 'Seller', personality: 'Collaborative', current_offer: 105000 },
+      ],
+    });
+
+    await db.updateSimulation(sim.id, { current_round: 4, current_gap: 10000 });
+    const initialOffersCount = (sim.offers || []).length;
+
+    // Trigger deadlock and automated resolution
+    await orchestratorService.initiateDeadlockResolution(sim.id, { reason: 'Impasse reached' });
+    const resolvedSim = await db.getSimulation(sim.id);
+
+    // Current Round must have incremented post-deadlock
+    assert.ok(Number(resolvedSim.current_round) > 4, `Round must increment post-deadlock (was 4, now ${resolvedSim.current_round})`);
+    // Offers exchanged must include post-deadlock counter-offer & accept
+    assert.ok((resolvedSim.offers || []).length > initialOffersCount, 'Offers count must increase with post-deadlock offers');
+    // Agent status and stances must be updated to Agreed
+    const buyerAgent = resolvedSim.agents.find((a) => a.role === 'Buyer');
+    const sellerAgent = resolvedSim.agents.find((a) => a.role === 'Seller');
+    assert.strictEqual(buyerAgent.stance, 'Agreed', 'Buyer agent stance must update to Agreed');
+    assert.strictEqual(sellerAgent.stance, 'Agreed', 'Seller agent stance must update to Agreed');
+    assert.strictEqual(resolvedSim.current_gap, 0, 'Current gap must update to 0 upon agreement');
+    assert.strictEqual(resolvedSim.agreement_likelihood, 100, 'Agreement likelihood must update to 100%');
+
+    // 2. Practice Mode (Human vs AI)
+    const practiceSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 6,
+      customAgents: [
+        { id: 'recruiter', role: 'Recruiter', name: 'Recruiter', personality: 'Collaborative', current_offer: 160000 },
+        { id: 'candidate', role: 'Candidate', name: 'Candidate', personality: 'Human', is_human: true, current_offer: 170000 },
+      ],
+    });
+
+    await db.updateSimulation(practiceSim.id, { current_round: 6, current_gap: 10000 });
+    await orchestratorService.initiateDeadlockResolution(practiceSim.id, { reason: 'Deadlock impasse' });
+
+    const preCounterOffers = (await db.getSimulation(practiceSim.id)).offers.length;
+
+    // Human submits counter-offer (Attempt 1 of 2)
+    const counterRes = await orchestratorService.handleDeadlockAction(practiceSim.id, {
+      action: 'COUNTER_OFFER',
+      offer_value: 164000,
+      sender_role: 'Candidate',
+    });
+
+    const postCounterSim = counterRes.simulation;
+    // Round must increment
+    assert.strictEqual(postCounterSim.current_round, 7, 'Round must increment to 7 on post-deadlock counter-offer');
+    // Offers count must include new offer
+    assert.ok(postCounterSim.offers.length > preCounterOffers, 'Offers exchanged must include human counter-offer');
+    // Human agent status and offer must reflect latest proposal
+    const humanInSim = postCounterSim.agents.find((a) => a.role === 'Candidate');
+    assert.strictEqual(humanInSim.current_offer, 164000, 'Human agent current_offer must update to 164000');
+    assert.ok(['Compromising', 'Agreed'].includes(humanInSim.stance), 'Human agent stance must update dynamically');
+  });
+
   console.log(`\n========================================`);
   console.log(`Results: ${passedCount} Passed, ${failedCount} Failed`);
   console.log(`========================================\n`);

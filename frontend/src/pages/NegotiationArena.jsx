@@ -70,17 +70,14 @@ const getDynamicStanceCategory = (agent, sim, isFirst) => {
   if (isCompleted) {
     return 'Agreed';
   }
-  if (sim?.status === 'DEADLOCK') {
-    return 'Firm';
-  }
 
-  // 2. Count actual offers made by this specific agent in the transcript
+  // 2. Inspect messages from this agent
   const agentRoleLower = (agent.role || '').toLowerCase();
   const agentNameLower = (agent.name || '').toLowerCase();
   const isHuman = agent.is_human === true || agent.personality === 'Human';
 
-  const agentOffers = (sim?.messages || []).filter((m) => {
-    if ((m.sender_type !== 'AGENT' && m.sender_type !== 'HUMAN') || !m.offer_value) return false;
+  const agentMessages = (sim?.messages || []).filter((m) => {
+    if (m.sender_type !== 'AGENT' && m.sender_type !== 'HUMAN') return false;
     if (isHuman && m.sender_type === 'HUMAN') return true;
     const sRole = (m.sender_role || '').toLowerCase();
     const sName = (m.sender_name || '').toLowerCase();
@@ -89,6 +86,18 @@ const getDynamicStanceCategory = (agent, sim, isFirst) => {
       (sName && (sName === agentNameLower || agentNameLower.includes(sName) || sName.includes(agentNameLower)))
     );
   });
+
+  const lastMsg = agentMessages[agentMessages.length - 1];
+  if (lastMsg) {
+    if (lastMsg.action === 'ACCEPT') return 'Agreed';
+    if (lastMsg.action === 'REJECT') return 'Firm';
+  }
+
+  if (sim?.status === 'DEADLOCK' && !sim?.deadlock_resolution?.active) {
+    return 'Firm';
+  }
+
+  const agentOffers = agentMessages.filter((m) => m.offer_value !== undefined && m.offer_value !== null && Number(m.offer_value) > 0);
 
   // If the agent has made 0 or 1 offer yet, they are holding firm at their opening position
   if (agentOffers.length <= 1) {
@@ -100,8 +109,8 @@ const getDynamicStanceCategory = (agent, sim, isFirst) => {
   const latestOffer = Number(agentOffers[agentOffers.length - 1].offer_value);
   const concessionAmount = Math.abs(latestOffer - initialOffer);
 
-  // If agent made a meaningful concession (> 1% shift toward counterpart) -> Compromising
-  if (concessionAmount > initialOffer * 0.01) {
+  // If agent made a meaningful concession (> 0.5% shift toward counterpart) -> Compromising
+  if (concessionAmount > initialOffer * 0.005) {
     return 'Compromising';
   }
 
@@ -1057,6 +1066,8 @@ const NegotiationArena = () => {
     }
   }
 
+  const allMessages = simulation?.messages || [];
+
   const activeAgentsList = sourceAgentsList.map((metaAgent, idx) => {
     const simAgent =
       simulationAgents.find(
@@ -1082,6 +1093,97 @@ const NegotiationArena = () => {
       metaAgent.defaultPersonality ||
       'Collaborative';
 
+    const agentRoleLower = (simAgent.role || metaAgent.role || '').toLowerCase();
+    const agentNameLower = (simAgent.name || metaAgent.name || '').toLowerCase();
+    const isHumanParticipant = Boolean(
+      metaAgent.personality === 'Human' ||
+      metaAgent.is_human === true ||
+      simAgent.personality === 'Human' ||
+      simAgent.is_human === true ||
+      (isPracticeMode && (
+        agentId === location.state?.userRoleAgentId ||
+        (humanAgent && (agentId === humanAgent.id || simAgent.role === humanAgent.role))
+      ))
+    );
+
+    let latestOfferFromMessages = null;
+    let latestActionFromMessages = null;
+    let initialOfferFromMessages = null;
+
+    // Scan messages to find opening and latest offers/actions for this agent (pre- and post-deadlock)
+    for (let i = 0; i < allMessages.length; i++) {
+      const m = allMessages[i];
+      if (m.sender_type !== 'AGENT' && m.sender_type !== 'HUMAN') continue;
+      const sRole = (m.sender_role || '').toLowerCase();
+      const sName = (m.sender_name || '').toLowerCase();
+      const matches =
+        (isHumanParticipant && m.sender_type === 'HUMAN') ||
+        (sRole && (sRole === agentRoleLower || agentRoleLower.includes(sRole) || sRole.includes(agentRoleLower))) ||
+        (sName && (sName === agentNameLower || agentNameLower.includes(sName) || sName.includes(agentNameLower)));
+      if (matches && m.offer_value !== undefined && m.offer_value !== null && Number(m.offer_value) > 0) {
+        if (initialOfferFromMessages === null) {
+          initialOfferFromMessages = Number(m.offer_value);
+        }
+        latestOfferFromMessages = Number(m.offer_value);
+      }
+      if (matches && m.action) {
+        latestActionFromMessages = m.action;
+      }
+    }
+
+    const defaultInitialOffer =
+      currentScenarioId === 'job-offer'
+        ? (idx === 0 ? 152000 : 175000)
+        : currentScenarioId === 'project-budget'
+        ? (idx === 0 ? 450000 : idx === 1 ? 350000 : 300000)
+        : (idx === 0 ? 95000 : 110000);
+
+    const resolvedCurrentOffer =
+      latestOfferFromMessages !== null
+        ? latestOfferFromMessages
+        : (simAgent.current_offer || defaultInitialOffer);
+
+    const isDealAgreed =
+      simulation?.status === 'COMPLETED' ||
+      simulation?.status === 'AGREEMENT_REACHED' ||
+      latestActionFromMessages === 'ACCEPT' ||
+      Boolean(simulation?.agreement);
+
+    const isDealDeadlock =
+      simulation?.status === 'DEADLOCK' &&
+      !simulation?.deadlock_resolution?.active;
+
+    let resolvedStance = simAgent.stance || (idx === 0 ? 'Holding firm' : 'Evaluating terms');
+    if (isDealAgreed) {
+      resolvedStance = 'Agreed';
+    } else if (latestActionFromMessages === 'REJECT') {
+      resolvedStance = 'Firm';
+    } else if (
+      latestActionFromMessages === 'COUNTER_OFFER' ||
+      (initialOfferFromMessages && Math.abs(resolvedCurrentOffer - initialOfferFromMessages) > 0)
+    ) {
+      resolvedStance = 'Compromising';
+    } else if (isDealDeadlock) {
+      resolvedStance = 'Firm';
+    }
+
+    let resolvedAgentStatus = 'Active';
+    if (isDealAgreed) {
+      resolvedAgentStatus = 'Agreed';
+    } else if (isDealDeadlock || latestActionFromMessages === 'REJECT') {
+      resolvedAgentStatus = 'Rejected';
+    } else {
+      resolvedAgentStatus = 'Active';
+    }
+
+    let resolvedProgress = simAgent.progress_percent || 50;
+    if (isDealAgreed) {
+      resolvedProgress = 100;
+    } else if (initialOfferFromMessages && resolvedCurrentOffer) {
+      const shift = Math.abs(resolvedCurrentOffer - initialOfferFromMessages);
+      resolvedProgress = Math.min(95, Math.max(50, Math.round(50 + (shift / (initialOfferFromMessages * 0.15)) * 45)));
+    }
+
     return {
       ...metaAgent,
       ...simAgent,
@@ -1090,15 +1192,10 @@ const NegotiationArena = () => {
       role: simAgent.role || metaAgent.role,
       goal: simAgent.goal || metaAgent.primaryGoal || metaAgent.goal,
       personality: configuredPersonality,
-      current_offer:
-        simAgent.current_offer ||
-        (currentScenarioId === 'job-offer'
-          ? (idx === 0 ? 152000 : 175000)
-          : currentScenarioId === 'project-budget'
-          ? (idx === 0 ? 450000 : idx === 1 ? 350000 : 300000)
-          : (idx === 0 ? 95000 : 110000)),
-      stance: simAgent.stance || (idx === 0 ? 'Holding firm' : 'Evaluating terms'),
-      progress_percent: simAgent.progress_percent || 50,
+      current_offer: resolvedCurrentOffer,
+      stance: resolvedStance,
+      agent_status: resolvedAgentStatus,
+      progress_percent: resolvedProgress,
     };
   });
 
@@ -1172,44 +1269,71 @@ const NegotiationArena = () => {
     opponentAgent?.personality,
   ]);
 
-  const currentRound = simulation?.current_round || 1;
-  const maxRounds = simulation?.max_rounds || currentScenarioObj.maxRounds || (currentScenarioId === 'job-offer' ? 8 : 12);
+  const maxMsgRound = allMessages.reduce((max, m) => Math.max(max, Number(m.round_number) || 1), 1);
+  const currentRound = Math.max(Number(simulation?.current_round) || 1, maxMsgRound);
+  const maxRounds = Number(simulation?.max_rounds || currentScenarioObj.maxRounds || (currentScenarioId === 'job-offer' ? 8 : 12));
   const roundProgress = Math.min(100, Math.round((currentRound / maxRounds) * 100));
 
-  // Dynamic offers calculation from simulation.offers or messages
-  const messageOffers = (simulation?.messages || []).filter(
-    (m) => (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') && m.offer_value !== undefined && m.offer_value !== null
+  // Dynamic offers calculation: count every valid offer & counter-offer exchanged before and after deadlock
+  const validOfferMsgs = allMessages.filter(
+    (m) =>
+      (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') &&
+      ((m.offer_value !== undefined && m.offer_value !== null && Number(m.offer_value) > 0) ||
+        m.action === 'OFFER' ||
+        m.action === 'COUNTER_OFFER' ||
+        (m.action === 'ACCEPT' && m.offer_value))
   );
-  const offersCount = (simulation?.offers && simulation.offers.length >= messageOffers.length)
+  const offersCount = (Array.isArray(simulation?.offers) && simulation.offers.length >= validOfferMsgs.length)
     ? simulation.offers.length
-    : Math.max(1, messageOffers.length);
+    : Math.max(1, validOfferMsgs.length);
 
-  // Dynamic gap calculation
-  const dynamicGap = (() => {
+  // Dynamic gap calculation: recalculate using the latest buyer and seller offers
+  const currentGap = (() => {
+    if (simulation?.status === 'COMPLETED' || simulation?.status === 'AGREEMENT_REACHED' || Boolean(simulation?.agreement)) {
+      return 0;
+    }
     if (currentScenarioId === 'project-budget') {
       const totalDemanded = activeAgentsList.reduce((sum, a) => sum + (Number(a.current_offer) || 0), 0);
       return Math.max(0, totalDemanded - 1000000);
     }
-    const agentOffers = activeAgentsList.map((a) => Number(a.current_offer)).filter((v) => !isNaN(v) && v > 0);
-    if (agentOffers.length >= 2) {
-      return Math.abs(agentOffers[0] - agentOffers[1]);
+    const buyerOffer = Number(activeAgentsList[0]?.current_offer || 0);
+    const sellerOffer = Number(activeAgentsList[1]?.current_offer || 0);
+    if (buyerOffer > 0 && sellerOffer > 0) {
+      if (currentScenarioId === 'vendor-pricing' || currentScenarioId === 'job-offer') {
+        return buyerOffer >= sellerOffer ? 0 : (sellerOffer - buyerOffer);
+      }
+      return Math.abs(buyerOffer - sellerOffer);
     }
-    return simulation?.current_gap || 0;
+    return typeof simulation?.current_gap === 'number' && simulation.current_gap >= 0
+      ? simulation.current_gap
+      : 0;
   })();
-
-  const currentGap = typeof simulation?.current_gap === 'number' && simulation.current_gap >= 0
-    ? simulation.current_gap
-    : dynamicGap;
 
   const isAllAggressive = activeAgentsList.length > 0 && activeAgentsList.every(
     (a) => (a.personality || '').toLowerCase().includes('aggressive')
   );
 
-  const agreementLikelihood = simulation?.status === 'COMPLETED' || simulation?.status === 'AGREEMENT_REACHED'
-    ? 100
-    : simulation?.status === 'DEADLOCK' || isAllAggressive
-    ? Math.max(10, Math.round(35 - (currentRound / maxRounds) * 20))
-    : (typeof simulation?.agreement_likelihood === 'number' ? simulation.agreement_likelihood : 50);
+  // Dynamic agreement likelihood: recalculate based on latest offers and negotiation state
+  const agreementLikelihood = (() => {
+    if (simulation?.status === 'COMPLETED' || simulation?.status === 'AGREEMENT_REACHED' || Boolean(simulation?.agreement)) {
+      return 100;
+    }
+    if (isAllAggressive && simulation?.status === 'DEADLOCK' && !simulation?.deadlock_resolution?.active) {
+      return 10;
+    }
+    if (currentGap === 0) return 100;
+    let calculated = 50;
+    if (currentScenarioId === 'vendor-pricing') {
+      calculated = Math.round(100 - (currentGap / 300) + (currentRound * 3));
+    } else if (currentScenarioId === 'job-offer') {
+      calculated = Math.round(100 - (currentGap / 350) + (currentRound * 4));
+    } else if (currentScenarioId === 'project-budget') {
+      calculated = Math.round(100 - (currentGap / 2000) + (currentRound * 3));
+    } else {
+      calculated = Math.round(100 - (currentGap / 200) + (currentRound * 4));
+    }
+    return Math.min(99, Math.max(10, calculated));
+  })();
 
   return (
     <div className={`arena-page-wrapper ${isFullscreen ? 'fullscreen' : ''}`}>
@@ -2346,7 +2470,16 @@ const NegotiationArena = () => {
                             );
                           })()}
                         </div>
-                        <span className="arena-agent-active-badge">Active</span>
+                        <span
+                          className={`arena-agent-active-badge status-${(agent.agent_status || 'Active').toLowerCase()}`}
+                          style={{
+                            background: agent.agent_status === 'Agreed' ? '#dcfce7' : agent.agent_status === 'Rejected' ? '#fee2e2' : '#e0f2fe',
+                            color: agent.agent_status === 'Agreed' ? '#15803d' : agent.agent_status === 'Rejected' ? '#b91c1c' : '#0369a1',
+                            border: `1px solid ${agent.agent_status === 'Agreed' ? '#86efac' : agent.agent_status === 'Rejected' ? '#fca5a5' : '#7dd3fc'}`,
+                          }}
+                        >
+                          {agent.agent_status || 'Active'}
+                        </span>
                       </div>
                     </div>
 
@@ -2367,11 +2500,11 @@ const NegotiationArena = () => {
                       <div className="arena-agent-stat-col align-right">
                         <span className="arena-stat-label">{isPracticeMode ? 'LIVE STANCE' : 'Stance'}</span>
                         <span
-                          className={`arena-live-stance-pill stance-${getDynamicStanceCategory(agent, simulation, isFirst).toLowerCase()}`}
-                          title={`Live Stance: ${getDynamicStanceCategory(agent, simulation, isFirst)}`}
+                          className={`arena-live-stance-pill stance-${(agent.stance || 'Firm').toLowerCase()}`}
+                          title={`Live Stance: ${agent.stance || 'Firm'}`}
                         >
                           <span className="stance-dot" />
-                          {getDynamicStanceCategory(agent, simulation, isFirst)}
+                          {agent.stance || 'Firm'}
                         </span>
                       </div>
                     </div>

@@ -515,6 +515,7 @@ class OrchestratorAgent {
 
     // Attempt 1 of 2: First agent evaluates compromise proposal and tables Counter-Offer (Attempt 1 of 2)
     resolution.counter_offer_attempts = 1;
+    const attempt1Round = Number(sim.current_round || 1) + 1;
     let attempt1Message = '';
     if (scenarioId.includes('job') || scenarioId.includes('salary')) {
       attempt1Message = `${agent0.name} (${agent0.role}): Counter-Offer (Attempt 1 of 2): In light of the Orchestrator's compromise proposal, we adjust our compensation offer to ₹${Number(compromise.offer_value).toLocaleString()} base salary with ${compromise.terms?.equity_grant || '0.15% equity grant'} and ${compromise.terms?.work_arrangement || 'Hybrid'} flexibility.`;
@@ -526,7 +527,7 @@ class OrchestratorAgent {
 
     await db.addMessage({
       simulation_id: simulationId,
-      round_number: sim.current_round,
+      round_number: attempt1Round,
       sender_type: 'AGENT',
       sender_name: agent0.name,
       sender_role: agent0.role,
@@ -537,10 +538,29 @@ class OrchestratorAgent {
       action: 'COUNTER_OFFER',
     });
 
+    await db.addOffer({
+      simulation_id: simulationId,
+      round_number: attempt1Round,
+      agent_role: agent0.role,
+      offer_value: compromise.offer_value,
+      terms: compromise.terms,
+    });
+
+    await db.updateAgent(simulationId, agent0.role, {
+      current_offer: compromise.offer_value,
+      stance: 'Compromising',
+      progress_percent: 85,
+    });
+
+    await db.updateSimulation(simulationId, {
+      current_round: attempt1Round,
+      deadlock_resolution: resolution,
+    });
+
     // Orchestrator logs forwarding of Attempt 1
     await db.addMessage({
       simulation_id: simulationId,
-      round_number: sim.current_round,
+      round_number: attempt1Round,
       sender_type: 'ORCHESTRATOR',
       sender_name: this.name,
       sender_role: this.role,
@@ -550,6 +570,7 @@ class OrchestratorAgent {
 
     // Attempt 2 of 2: Second agent evaluates Attempt 1
     resolution.counter_offer_attempts = 2;
+    const attempt2Round = attempt1Round + 1;
 
     if (!allAggressive) {
       // Non-aggressive / cooperative: Accept the compromise
@@ -564,7 +585,7 @@ class OrchestratorAgent {
 
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: attempt2Round,
         sender_type: 'AGENT',
         sender_name: agent1.name,
         sender_role: agent1.role,
@@ -575,13 +596,33 @@ class OrchestratorAgent {
         action: 'ACCEPT',
       });
 
+      await db.addOffer({
+        simulation_id: simulationId,
+        round_number: attempt2Round,
+        agent_role: agent1.role,
+        offer_value: compromise.offer_value,
+        terms: compromise.terms,
+      });
+
+      await db.updateAgent(simulationId, agent0.role, {
+        current_offer: compromise.offer_value,
+        stance: 'Agreed',
+        progress_percent: 100,
+      });
+
+      await db.updateAgent(simulationId, agent1.role, {
+        current_offer: compromise.offer_value,
+        stance: 'Agreed',
+        progress_percent: 100,
+      });
+
       // If multilateral (3+ agents), have remaining agents also confirm acceptance
       if (agents.length > 2) {
         for (let i = 2; i < agents.length; i++) {
           const extraAgent = agents[i];
           await db.addMessage({
             simulation_id: simulationId,
-            round_number: sim.current_round,
+            round_number: attempt2Round,
             sender_type: 'AGENT',
             sender_name: extraAgent.name,
             sender_role: extraAgent.role,
@@ -590,6 +631,20 @@ class OrchestratorAgent {
             offer_value: compromise.offer_value,
             terms: compromise.terms,
             action: 'ACCEPT',
+          });
+
+          await db.addOffer({
+            simulation_id: simulationId,
+            round_number: attempt2Round,
+            agent_role: extraAgent.role,
+            offer_value: compromise.offer_value,
+            terms: compromise.terms,
+          });
+
+          await db.updateAgent(simulationId, extraAgent.role, {
+            current_offer: compromise.offer_value,
+            stance: 'Agreed',
+            progress_percent: 100,
           });
         }
       }
@@ -606,6 +661,7 @@ class OrchestratorAgent {
       });
 
       await db.updateSimulation(simulationId, {
+        current_round: attempt2Round,
         status: 'AGREEMENT_REACHED',
         current_gap: 0,
         agreement_likelihood: 100,
@@ -614,7 +670,7 @@ class OrchestratorAgent {
 
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: attempt2Round,
         sender_type: 'ORCHESTRATOR',
         sender_name: this.name,
         sender_role: this.role,
@@ -629,7 +685,7 @@ class OrchestratorAgent {
       // All Aggressive: Inflexible rejection on Attempt 2 of 2
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: attempt2Round,
         sender_type: 'AGENT',
         sender_name: agent1.name,
         sender_role: agent1.role,
@@ -639,19 +695,28 @@ class OrchestratorAgent {
         action: 'REJECT',
       });
 
+      await db.updateAgent(simulationId, agent0.role, {
+        stance: 'Firm',
+      });
+      await db.updateAgent(simulationId, agent1.role, {
+        stance: 'Firm',
+      });
+
       resolution.active = false;
       resolution.status = 'FAILED';
       resolution.final_outcome = 'DEADLOCK';
 
       await db.updateSimulation(simulationId, {
+        current_round: attempt2Round,
         status: 'DEADLOCK',
+        agreement_likelihood: 10,
         deadlock_reason: 'Aggressive agents exhausted the maximum 2 resolution counter-offer attempts without consensus.',
         deadlock_resolution: resolution,
       });
 
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: attempt2Round,
         sender_type: 'ORCHESTRATOR',
         sender_name: this.name,
         sender_role: this.role,
@@ -700,11 +765,12 @@ class OrchestratorAgent {
     if (normalizedAction === 'ACCEPT' || normalizedAction === 'DEADLOCK_ACCEPT') {
       const acceptedValue = compromise.offer_value;
       const acceptedTerms = compromise.terms || {};
+      const nextRound = (sim.current_round || 1) + 1;
 
       // 1. Record human acceptance
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: nextRound,
         sender_type: 'HUMAN',
         sender_name: humanAgent.name,
         sender_role: humanAgent.role,
@@ -715,11 +781,25 @@ class OrchestratorAgent {
         action: 'ACCEPT',
       });
 
+      await db.addOffer({
+        simulation_id: simulationId,
+        round_number: nextRound,
+        agent_role: humanAgent.role,
+        offer_value: acceptedValue,
+        terms: acceptedTerms,
+      });
+
+      await db.updateAgent(simulationId, humanAgent.role, {
+        current_offer: acceptedValue,
+        stance: 'Agreed',
+        progress_percent: 100,
+      });
+
       // 2. AI counterparts evaluate and accept
       for (const aiAgent of aiAgents) {
         await db.addMessage({
           simulation_id: simulationId,
-          round_number: sim.current_round,
+          round_number: nextRound,
           sender_type: 'AGENT',
           sender_name: aiAgent.name,
           sender_role: aiAgent.role,
@@ -728,6 +808,20 @@ class OrchestratorAgent {
           offer_value: acceptedValue,
           terms: acceptedTerms,
           action: 'ACCEPT',
+        });
+
+        await db.addOffer({
+          simulation_id: simulationId,
+          round_number: nextRound,
+          agent_role: aiAgent.role,
+          offer_value: acceptedValue,
+          terms: acceptedTerms,
+        });
+
+        await db.updateAgent(simulationId, aiAgent.role, {
+          current_offer: acceptedValue,
+          stance: 'Agreed',
+          progress_percent: 100,
         });
       }
 
@@ -744,6 +838,7 @@ class OrchestratorAgent {
       });
 
       await db.updateSimulation(simulationId, {
+        current_round: nextRound,
         status: 'AGREEMENT_REACHED',
         current_gap: 0,
         agreement_likelihood: 100,
@@ -752,7 +847,7 @@ class OrchestratorAgent {
 
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: nextRound,
         sender_type: 'ORCHESTRATOR',
         sender_name: this.name,
         sender_role: this.role,
@@ -784,6 +879,10 @@ class OrchestratorAgent {
         action: 'REJECT',
       });
 
+      await db.updateAgent(simulationId, humanAgent.role, {
+        stance: 'Firm',
+      });
+
       const remainingAttempts = 2 - resolution.counter_offer_attempts;
 
       if (!confirmDeadlock && remainingAttempts > 0) {
@@ -811,6 +910,12 @@ class OrchestratorAgent {
         resolution.active = false;
         resolution.status = 'FAILED';
         resolution.final_outcome = 'DEADLOCK';
+
+        for (const aiAgent of aiAgents) {
+          await db.updateAgent(simulationId, aiAgent.role, {
+            stance: 'Firm',
+          });
+        }
 
         await db.updateSimulation(simulationId, {
           status: 'DEADLOCK',
@@ -846,6 +951,7 @@ class OrchestratorAgent {
 
       const attemptNum = resolution.counter_offer_attempts + 1;
       resolution.counter_offer_attempts = attemptNum;
+      const nextRound = (sim.current_round || 1) + 1;
 
       const effectiveTerms = terms || {};
       const effectiveOffer = offer_value !== undefined && offer_value !== null ? Number(offer_value) : compromise.offer_value;
@@ -853,7 +959,7 @@ class OrchestratorAgent {
       // 1. Record human counter-offer
       await db.addMessage({
         simulation_id: simulationId,
-        round_number: sim.current_round,
+        round_number: nextRound,
         sender_type: 'HUMAN',
         sender_name: humanAgent.name,
         sender_role: humanAgent.role,
@@ -862,6 +968,20 @@ class OrchestratorAgent {
         offer_value: effectiveOffer,
         terms: effectiveTerms,
         action: 'COUNTER_OFFER',
+      });
+
+      await db.addOffer({
+        simulation_id: simulationId,
+        round_number: nextRound,
+        agent_role: humanAgent.role,
+        offer_value: effectiveOffer,
+        terms: effectiveTerms,
+      });
+
+      await db.updateAgent(simulationId, humanAgent.role, {
+        current_offer: effectiveOffer,
+        stance: 'Compromising',
+        progress_percent: Math.min(95, 60 + attemptNum * 15),
       });
 
       // 2. Scenario-independent AI evaluation
@@ -908,7 +1028,7 @@ class OrchestratorAgent {
         if (allAiAccept) {
           await db.addMessage({
             simulation_id: simulationId,
-            round_number: sim.current_round,
+            round_number: nextRound,
             sender_type: 'AGENT',
             sender_name: aiAgent.name,
             sender_role: aiAgent.role,
@@ -918,10 +1038,24 @@ class OrchestratorAgent {
             terms: effectiveTerms,
             action: 'ACCEPT',
           });
+
+          await db.addOffer({
+            simulation_id: simulationId,
+            round_number: nextRound,
+            agent_role: aiAgent.role,
+            offer_value: effectiveOffer,
+            terms: effectiveTerms,
+          });
+
+          await db.updateAgent(simulationId, aiAgent.role, {
+            current_offer: effectiveOffer,
+            stance: 'Agreed',
+            progress_percent: 100,
+          });
         } else {
           await db.addMessage({
             simulation_id: simulationId,
-            round_number: sim.current_round,
+            round_number: nextRound,
             sender_type: 'AGENT',
             sender_name: aiAgent.name,
             sender_role: aiAgent.role,
@@ -946,7 +1080,13 @@ class OrchestratorAgent {
           outcome: 'AGREEMENT_REACHED',
         });
 
+        await db.updateAgent(simulationId, humanAgent.role, {
+          stance: 'Agreed',
+          progress_percent: 100,
+        });
+
         await db.updateSimulation(simulationId, {
+          current_round: nextRound,
           status: 'AGREEMENT_REACHED',
           current_gap: 0,
           agreement_likelihood: 100,
@@ -955,7 +1095,7 @@ class OrchestratorAgent {
 
         await db.addMessage({
           simulation_id: simulationId,
-          round_number: sim.current_round,
+          round_number: nextRound,
           sender_type: 'ORCHESTRATOR',
           sender_name: this.name,
           sender_role: this.role,
@@ -974,9 +1114,28 @@ class OrchestratorAgent {
         if (attemptNum < 2) {
           resolution.status = 'AWAITING_DECISION';
 
+          // Recalculate gap and likelihood with human's new offer
+          const primaryAi = aiAgents[0] || {};
+          const aiOffer = Number(primaryAi.current_offer || 0);
+          let recalculatedGap = Math.abs(effectiveOffer - aiOffer);
+          if (scenarioId.includes('job') || scenarioId.includes('salary')) {
+            const isHumanCand = (humanAgent.role || '').toLowerCase().includes('candidate');
+            if (isHumanCand) {
+              recalculatedGap = aiOffer >= effectiveOffer ? 0 : (effectiveOffer - aiOffer);
+            } else {
+              recalculatedGap = effectiveOffer >= aiOffer ? 0 : (aiOffer - effectiveOffer);
+            }
+          } else if (scenarioId.includes('budget')) {
+            const eng = Number(effectiveTerms.engineering || 400000);
+            const mkt = Number(effectiveTerms.marketing || 340000);
+            const prod = Number(effectiveTerms.product || 260000);
+            recalculatedGap = Math.max(0, (eng + mkt + prod) - 1000000);
+          }
+          const recalculatedLikelihood = Math.min(95, Math.max(15, Math.round(100 - (recalculatedGap / (effectiveOffer * 0.1 || 1000)) * 50)));
+
           await db.addMessage({
             simulation_id: simulationId,
-            round_number: sim.current_round,
+            round_number: nextRound,
             sender_type: 'ORCHESTRATOR',
             sender_name: this.name,
             sender_role: this.role,
@@ -984,7 +1143,12 @@ class OrchestratorAgent {
             action: 'STATUS',
           });
 
-          await db.updateSimulation(simulationId, { deadlock_resolution: resolution });
+          await db.updateSimulation(simulationId, {
+            current_round: nextRound,
+            current_gap: recalculatedGap,
+            agreement_likelihood: recalculatedLikelihood,
+            deadlock_resolution: resolution,
+          });
 
           return {
             simulation: await db.getSimulation(simulationId),
@@ -997,15 +1161,26 @@ class OrchestratorAgent {
           resolution.status = 'FAILED';
           resolution.final_outcome = 'DEADLOCK';
 
+          await db.updateAgent(simulationId, humanAgent.role, {
+            stance: 'Firm',
+          });
+          for (const aiAgent of aiAgents) {
+            await db.updateAgent(simulationId, aiAgent.role, {
+              stance: 'Firm',
+            });
+          }
+
           await db.updateSimulation(simulationId, {
+            current_round: nextRound,
             status: 'DEADLOCK',
+            agreement_likelihood: 10,
             deadlock_reason: 'Maximum 2 counter-offer attempts reached without consensus.',
             deadlock_resolution: resolution,
           });
 
           await db.addMessage({
             simulation_id: simulationId,
-            round_number: sim.current_round,
+            round_number: nextRound,
             sender_type: 'ORCHESTRATOR',
             sender_name: this.name,
             sender_role: this.role,

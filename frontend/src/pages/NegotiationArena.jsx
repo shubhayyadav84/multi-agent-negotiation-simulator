@@ -1096,13 +1096,15 @@ const NegotiationArena = () => {
     const agentRoleLower = (simAgent.role || metaAgent.role || '').toLowerCase();
     const agentNameLower = (simAgent.name || metaAgent.name || '').toLowerCase();
     const isHumanParticipant = Boolean(
-      metaAgent.personality === 'Human' ||
-      metaAgent.is_human === true ||
-      simAgent.personality === 'Human' ||
-      simAgent.is_human === true ||
+      metaAgent?.personality === 'Human' ||
+      metaAgent?.is_human === true ||
+      simAgent?.personality === 'Human' ||
+      simAgent?.is_human === true ||
       (isPracticeMode && (
         agentId === location.state?.userRoleAgentId ||
-        (humanAgent && (agentId === humanAgent.id || simAgent.role === humanAgent.role))
+        metaAgent?.id === location.state?.userRoleAgentId ||
+        simAgent?.id === location.state?.userRoleAgentId ||
+        (location.state?.userSide === 'seller' ? idx === 1 : idx === 0)
       ))
     );
 
@@ -1191,7 +1193,8 @@ const NegotiationArena = () => {
       name: simAgent.name || metaAgent.name || metaAgent.role,
       role: simAgent.role || metaAgent.role,
       goal: simAgent.goal || metaAgent.primaryGoal || metaAgent.goal,
-      personality: configuredPersonality,
+      personality: isHumanParticipant ? 'Human' : configuredPersonality,
+      is_human: isHumanParticipant,
       current_offer: resolvedCurrentOffer,
       stance: resolvedStance,
       agent_status: resolvedAgentStatus,
@@ -2460,7 +2463,8 @@ const NegotiationArena = () => {
                               agent.is_human === true ||
                               (isPracticeMode && (
                                 agent.id === location.state?.userRoleAgentId ||
-                                (humanAgent && (agent.id === humanAgent.id || agent.role === humanAgent.role))
+                                agent.id === humanAgent?.id ||
+                                agent.role === humanAgent?.role
                               ))
                             );
                             return (

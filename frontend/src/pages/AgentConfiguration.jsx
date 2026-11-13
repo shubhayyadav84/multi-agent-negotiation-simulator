@@ -46,19 +46,26 @@ const AgentConfiguration = () => {
   const [validationErrors, setValidationErrors] = useState([]);
 
   // Active scenario strictly based on user selection
-  const activeScenario =
-    selectedScenario || (selectedScenarioId ? getScenarioById(selectedScenarioId) : null);
+  const urlScenarioId = searchParams.get('scenario');
+  const scenarioFromUrl = urlScenarioId ? getScenarioById(urlScenarioId) : null;
+  const isInvalidUrlScenario = Boolean(urlScenarioId && !scenarioFromUrl);
+
+  const activeScenario = isInvalidUrlScenario
+    ? null
+    : (scenarioFromUrl || selectedScenario || (selectedScenarioId ? getScenarioById(selectedScenarioId) : null));
 
   useEffect(() => {
-    if (!activeScenario) {
+    if (isInvalidUrlScenario || !activeScenario) {
       navigate('/scenarios', {
         replace: true,
         state: {
-          error: t ? t('pleaseSelectScenario') : 'Please select a negotiation scenario before proceeding to agent configuration.'
+          error: isInvalidUrlScenario
+            ? 'The selected scenario could not be found.'
+            : (t ? t('pleaseSelectScenario') : 'Please select a negotiation scenario before proceeding to agent configuration.')
         }
       });
     }
-  }, [activeScenario, navigate, t]);
+  }, [activeScenario, isInvalidUrlScenario, navigate, t]);
 
   if (!activeScenario) {
     return null;

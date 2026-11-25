@@ -176,6 +176,7 @@ async function runTests() {
       isRoundEnd: false,
       settlementPrice: 9800,
       activeAgent: { role: 'Seller' },
+      bothHaveOffered: true,
     });
     assert.strictEqual(gapEval.shouldStop, true);
     assert.strictEqual(gapEval.finalStatus, 'COMPLETED');
@@ -214,6 +215,75 @@ async function runTests() {
     assert.strictEqual(maxRoundEval.shouldStop, true);
     assert.strictEqual(maxRoundEval.finalStatus, 'DEADLOCK');
   });
+  await test('11. Detects repeated identical offers', async () => {
+  const orchestrator = new OrchestratorAgent();
+
+  const result = orchestrator.detectDeadlock({
+    messages: [
+      { sender_type: 'AGENT', sender_role: 'Buyer', offer_value: 90000 },
+      { sender_type: 'AGENT', sender_role: 'Seller', offer_value: 110000 },
+      { sender_type: 'AGENT', sender_role: 'Buyer', offer_value: 90000 },
+      { sender_type: 'AGENT', sender_role: 'Buyer', offer_value: 90000 },
+    ],
+  });
+
+  assert.strictEqual(result.detected, true);
+  assert.strictEqual(result.type, 'UNCHANGED_OFFERS');
+});
+
+await test('12. Detects repeated rejections', async () => {
+  const orchestrator = new OrchestratorAgent();
+
+  const result = orchestrator.detectDeadlock({
+    messages: [
+      { sender_type: 'AGENT', action: 'REJECT' },
+      { sender_type: 'HUMAN', action: 'REJECT' },
+      { sender_type: 'AGENT', action: 'REJECT' },
+    ],
+  });
+
+  assert.strictEqual(result.detected, true);
+  assert.strictEqual(result.type, 'REPEATED_REJECTIONS');
+});
+await test('13. Compromise proposal is attempted before final deadlock', async () => {
+  const sim = await orchestratorService.initializeSimulation({
+    scenarioId: 'vendor-pricing',
+    maxRounds: 10,
+    customAgents: [
+      {
+        id: 'buyer-procurement',
+        personality: 'Human',
+        is_human: true,
+      },
+      {
+        id: 'vendor-sales',
+        personality: 'Human',
+        is_human: true,
+      },
+    ],
+  });
+
+  // Repeat the same offers from both participants
+  for (let i = 0; i < 6; i++) {
+    const offerValue = i % 2 === 0 ? 95000 : 110000;
+
+    await orchestratorService.advanceStep(sim.id, {
+      message: `My offer is ₹${offerValue}.`,
+      offer_value: offerValue,
+      action: 'COUNTER_OFFER',
+    });
+  }
+
+  const finalSim = await db.getSimulation(sim.id);
+
+  const compromiseMessage = finalSim.messages.find(
+    (message) =>
+      message.message?.includes('[DEADLOCK_COMPROMISE_ATTEMPTED]')
+  );
+
+  assert.ok(compromiseMessage, 'Compromise proposal should be recorded');
+  assert.strictEqual(finalSim.status, 'DEADLOCK');
+});
 
   await test('8. Pause, Resume, and End lifecycle controls work properly', async () => {
     const sim = await orchestratorService.initializeSimulation({
@@ -244,8 +314,10 @@ async function runTests() {
     const fullRunResult = await orchestratorService.runFullSimulation(sim.id, 20);
     assert.ok(fullRunResult.stepsTaken > 0, 'Should have taken multiple steps');
     assert.ok(
-      fullRunResult.simulation.status === 'COMPLETED' || fullRunResult.simulation.status === 'DEADLOCK',
-      `Simulation status should be COMPLETED or DEADLOCK, was: ${fullRunResult.simulation.status}`
+      fullRunResult.simulation.status === 'COMPLETED' ||
+        fullRunResult.simulation.status === 'AGREEMENT_REACHED' ||
+        fullRunResult.simulation.status === 'DEADLOCK',
+      `Simulation status should be COMPLETED, AGREEMENT_REACHED or DEADLOCK, was: ${fullRunResult.simulation.status}`
     );
   });
 
@@ -276,6 +348,427 @@ async function runTests() {
 
     assert.ok(listB.some(s => s.id === simB.id), 'listB should contain simB');
     assert.ok(!listB.some(s => s.id === simA.id), 'listB should NOT contain simA');
+  });
+
+  await test('14. Multilateral Project Budget: 3 agents negotiate without premature Round 1 agreement, and Practice Mode requires Human participation', async () => {
+    // 1. Simulation Mode for project-budget has 3 agents and does not end in round 1
+    const budgetSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'project-budget',
+      maxRounds: 10,
+    });
+
+    assert.strictEqual(budgetSim.agents.length, 3, 'Project budget must have 3 participating agents');
+    assert.strictEqual(budgetSim.status, 'RUNNING');
+    assert.strictEqual(budgetSim.current_round, 1);
+
+    // Turn 2 in round 1 (Marketing Lead)
+    const turn2Result = await orchestratorService.advanceStep(budgetSim.id);
+    assert.strictEqual(turn2Result.advanced, true);
+    let currentSim = await db.getSimulation(budgetSim.id);
+    assert.strictEqual(currentSim.status, 'RUNNING', 'Must NOT conclude after turn 2 in round 1');
+
+    // Turn 3 in round 1 (Product AI Lead)
+    const turn3Result = await orchestratorService.advanceStep(budgetSim.id);
+    assert.strictEqual(turn3Result.advanced, true);
+    currentSim = await db.getSimulation(budgetSim.id);
+    assert.strictEqual(currentSim.status, 'RUNNING', 'Must NOT conclude at round 1 because demands start at ~₹1.1M');
+    assert.strictEqual(currentSim.current_round, 2, 'Should cleanly advance to Round 2');
+
+    // 2. Practice Mode with 3 agents: 2 AI and 1 Human
+    const practiceAgents = [
+      { id: 'head-product-ai', role: 'Product AI Lead', personality: 'Aggressive' },
+      { id: 'cmo-marketing', role: 'Marketing Lead', personality: 'Aggressive' },
+      { id: 'vp-engineering', role: 'Lead Software Engineer', personality: 'Human', is_human: true },
+    ];
+
+    const practiceSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'project-budget',
+      maxRounds: 10,
+      customAgents: practiceAgents,
+    });
+
+    assert.strictEqual(practiceSim.agents.length, 3);
+    assert.strictEqual(practiceSim.status, 'RUNNING');
+
+    // Turn 2 taken by second AI (Marketing Lead)
+    const pTurn2 = await orchestratorService.advanceStep(practiceSim.id);
+    assert.strictEqual(pTurn2.advanced, true);
+    let pSimState = await db.getSimulation(practiceSim.id);
+    assert.strictEqual(pSimState.status, 'RUNNING', 'AI vs AI must NOT conclude round 1 before Human turn');
+
+    // Turn 3: Attempting automatic advanceStep must wait for Human
+    const pTurn3Waiting = await orchestratorService.advanceStep(practiceSim.id);
+    assert.strictEqual(pTurn3Waiting.waitingForHuman, true, 'Must wait for human player');
+
+    // Human submits move with 3 values
+    const pHumanMove = await orchestratorService.advanceStep(practiceSim.id, {
+      message: 'Engineering requests 400000, Marketing 350000, Product 250000',
+    });
+    assert.strictEqual(pHumanMove.advanced, true);
+  });
+
+  await test('15. Universal Deadlock Resolution: Dynamic scenario-independent proposals across all 3 scenarios and Practice Mode actions', async () => {
+    // A. Verify Compromise Proposal generation across all 3 scenarios
+    const vendorSim = { scenario_id: 'vendor-pricing', agents: [{ role: 'Buyer', current_offer: 95000 }, { role: 'Seller', current_offer: 110000 }] };
+    const jobSim = { scenario_id: 'job-offer', agents: [{ role: 'Recruiter', current_offer: 155000 }, { role: 'Candidate', current_offer: 175000 }] };
+    const budgetSim = { scenario_id: 'project-budget', agents: [{ role: 'Engineering Lead' }, { role: 'Marketing Lead' }, { role: 'Product AI Lead' }] };
+
+    const vendorProposal = orchestratorService.generateCompromiseProposal(vendorSim);
+    assert.ok(vendorProposal.detailed_terms.unitPrice, 'Vendor proposal must formulate unit price');
+    assert.ok(vendorProposal.detailed_terms.payment_terms.includes('Net-45'), 'Vendor proposal must formulate Net-45 payment terms');
+
+    const jobProposal = orchestratorService.generateCompromiseProposal(jobSim);
+    assert.ok(jobProposal.detailed_terms.baseSalary, 'Job proposal must formulate base salary');
+    assert.ok(jobProposal.detailed_terms.work_arrangement.includes('Hybrid'), 'Job proposal must formulate hybrid work arrangement');
+
+    const budgetProposal = orchestratorService.generateCompromiseProposal(budgetSim);
+    assert.strictEqual(budgetProposal.detailed_terms.total, 1000000, 'Budget proposal must sum strictly to ₹10,00,000');
+    assert.strictEqual(budgetProposal.detailed_terms.engineering + budgetProposal.detailed_terms.marketing + budgetProposal.detailed_terms.product, 1000000);
+
+    // B. Practice Mode Deadlock Actions (ACCEPT, REJECT, COUNTER-OFFER with max 2 attempts)
+    const practiceDeadlockSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'seller-rep', role: 'Sales Account Executive', personality: 'Aggressive' },
+        { id: 'buyer-user', role: 'Procurement Director', personality: 'Human', is_human: true },
+      ],
+    });
+
+    // Initiate deadlock resolution manually
+    await orchestratorService.initiateDeadlockResolution(practiceDeadlockSim.id, {
+      reason: 'Repeated stubborn positions',
+      type: 'UNCHANGED_OFFERS',
+    });
+
+    let currentSim = await db.getSimulation(practiceDeadlockSim.id);
+    assert.strictEqual(currentSim.deadlock_resolution.active, true);
+    assert.strictEqual(currentSim.deadlock_resolution.counter_offer_attempts, 0);
+
+    // Counter-Offer Attempt 1 (declined by AI because ₹85,000 is too far from compromise)
+    const counter1Result = await orchestratorService.handleDeadlockAction(practiceDeadlockSim.id, {
+      action: 'COUNTER_OFFER',
+      offer_value: 85000,
+      sender_role: 'Procurement Director',
+      message: 'Counter-offer 1: Proposing ₹85,000',
+    });
+    assert.strictEqual(counter1Result.deadlockResolution.counter_offer_attempts, 1);
+    assert.strictEqual(counter1Result.simulation.status, 'RUNNING');
+
+    // Counter-Offer Attempt 2 (declined by AI -> max attempts exhausted -> concludes with DEADLOCK)
+    const counter2Result = await orchestratorService.handleDeadlockAction(practiceDeadlockSim.id, {
+      action: 'COUNTER_OFFER',
+      offer_value: 86000,
+      sender_role: 'Procurement Director',
+      message: 'Counter-offer 2: Proposing ₹86,000',
+    });
+    assert.strictEqual(counter2Result.deadlockResolution.counter_offer_attempts, 2);
+    assert.strictEqual(counter2Result.simulation.status, 'DEADLOCK');
+
+    // Attempt 3 must be strictly blocked (max 2 counter-offers rule)
+    let attempt3Blocked = false;
+    try {
+      await orchestratorService.handleDeadlockAction(practiceDeadlockSim.id, {
+        action: 'COUNTER_OFFER',
+        offer_value: 101500,
+        sender_role: 'Procurement Director',
+        message: 'Attempt 3',
+      });
+    } catch (err) {
+      attempt3Blocked = true;
+      assert.ok(err.message.toLowerCase().includes('maximum') && err.message.includes('2'));
+    }
+    assert.strictEqual(attempt3Blocked, true, '3rd counter-offer must be rejected');
+
+    // Accept action concludes in AGREEMENT_REACHED
+    const acceptSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'recruiter', role: 'Hiring Director', personality: 'Collaborative' },
+        { id: 'candidate', role: 'Job Candidate', personality: 'Human', is_human: true },
+      ],
+    });
+    await orchestratorService.initiateDeadlockResolution(acceptSim.id, { reason: 'Impasse' });
+    const acceptResult = await orchestratorService.handleDeadlockAction(acceptSim.id, {
+      action: 'ACCEPT',
+      sender_role: 'Job Candidate',
+      message: 'I accept the compromise offer',
+    });
+    assert.strictEqual(acceptResult.simulation.status, 'AGREEMENT_REACHED');
+    assert.strictEqual(acceptResult.deadlockResolution.active, false);
+    assert.strictEqual(acceptResult.deadlockResolution.final_outcome, 'AGREEMENT_REACHED');
+  });
+
+  await test('16. Universal Deadlock Resolution: Fully automated AI resolution in Simulation Mode', async () => {
+    const aiSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'buyer', role: 'Buyer', personality: 'Collaborative' },
+        { id: 'seller', role: 'Seller', personality: 'Collaborative' },
+      ],
+    });
+
+    const result = await orchestratorService.initiateDeadlockResolution(aiSim.id, {
+      reason: 'AI stagnation',
+      type: 'UNCHANGED_OFFERS',
+    });
+
+    assert.strictEqual(result.status, 'AGREEMENT_REACHED', 'AI agents in simulation mode should automatically evaluate and conclude');
+    assert.strictEqual(result.deadlock_resolution.final_outcome, 'AGREEMENT_REACHED');
+    assert.strictEqual(result.deadlock_resolution.active, false);
+  });
+
+  await test('17. Mathematical Crossover & Auto-Agreement: Buyer offer >= Seller ask automatically ends simulation', async () => {
+    // Scenario 1: Vendor Pricing
+    // Opening seller move has already occurred at initialization (Round 1, Turn 1: ~₹110,000)
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'buyer-procurement', role: 'Purchasing Director', name: 'Purchasing Director', personality: 'Human', is_human: true },
+        { id: 'vendor-sales', role: 'Sales Account Executive', name: 'Sales Account Executive', personality: 'Collaborative' },
+      ],
+    });
+
+    // Human Buyer submits 2,000,000 in Round 1 (far exceeds seller's ₹110,000 asking price)
+    const buyerStep = await orchestratorService.advanceStep(sim.id, {
+      message: '2000k',
+      offer_value: 2000000,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Purchasing Director',
+      is_human: true,
+    });
+
+    assert.strictEqual(buyerStep.simulation.current_gap, 0, 'Gap must be 0 when buyer offers >= seller ask');
+
+    // Turn advances to AI Seller in Round 2. Seller MUST accept and simulation MUST conclude immediately
+    const sellerStep = await orchestratorService.advanceStep(sim.id);
+    assert.strictEqual(sellerStep.action, 'ACCEPT', 'Seller must accept when buyer offer >= seller ask');
+    assert.strictEqual(sellerStep.simulation.status, 'COMPLETED', 'Simulation must immediately conclude as COMPLETED');
+    assert.strictEqual(sellerStep.stoppingConditionMet, true, 'Stopping condition must be met');
+    assert.strictEqual(sellerStep.simulation.current_gap, 0, 'Final gap must be 0');
+
+    // Next step must not advance turns
+    const afterConclusion = await orchestratorService.advanceStep(sim.id);
+    assert.strictEqual(afterConclusion.advanced, false, 'Turn must not advance after agreement conclusion');
+
+    // Scenario 2: Job Offer
+    const jobSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'candidate', role: 'Job Candidate', personality: 'Collaborative' },
+        { id: 'hiring-director', role: 'Hiring Director', personality: 'Collaborative' },
+      ],
+    });
+    // Candidate opens with ₹175,000 ask. Recruiter counters with ₹180,000 (exceeds candidate's ask)
+    await orchestratorService.advanceStep(jobSim.id, {
+      message: 'We offer ₹180,000 base salary',
+      offer_value: 180000,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Hiring Director',
+    });
+    // Candidate's turn: receives 180,000 >= 175,000 -> must accept and complete
+    const candidateStep = await orchestratorService.advanceStep(jobSim.id);
+    assert.strictEqual(candidateStep.action, 'ACCEPT', 'Candidate must accept when recruiter offer >= candidate ask');
+    assert.strictEqual(candidateStep.simulation.status, 'COMPLETED', 'Simulation must conclude in COMPLETED');
+
+    // Scenario 3: Project Budget Allocation (total demands <= 1,000,000)
+    const evalResult = orchestratorService.evaluateStoppingConditions({
+      action: 'ACCEPT',
+      agreementReached: true,
+      currentGap: 0,
+      threshold: 0,
+      currentRound: 2,
+      maxRounds: 10,
+      isRoundEnd: true,
+      settlementPrice: 1000000,
+      bothHaveOffered: true,
+      allHaveOffered: true,
+      totalAgents: 3,
+      isPractice: false,
+      minRounds: 5,
+    });
+    assert.strictEqual(evalResult.shouldStop, true, 'Direct mathematical crossover (gap <= 0) must trigger immediate agreement');
+    assert.strictEqual(evalResult.finalStatus, 'COMPLETED');
+  });
+
+  await test('18. Universal Deadlock Resolution: Impasse at Round 8/8 in Job Offer Simulation extends max rounds to 10 and executes 2 attempts ending in AGREEMENT_REACHED', async () => {
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 8,
+      customAgents: [
+        { id: 'recruiter', role: 'Recruiter', name: 'Recruiter', personality: 'Collaborative', current_offer: 163700 },
+        { id: 'candidate', role: 'Candidate', name: 'Candidate', personality: 'Collaborative', current_offer: 163900 },
+      ],
+    });
+
+    // Advance to Round 8
+    await db.updateSimulation(sim.id, {
+      current_round: 8,
+      current_gap: 200,
+    });
+
+    // Both agents take their turn in round 8: Candidate (higher ask) then Recruiter (lower ask)
+    await orchestratorService.advanceStep(sim.id, {
+      message: 'I can adjust my expectation to ₹163,900.',
+      offer_value: 163900,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Candidate',
+    });
+
+    const turn2 = await orchestratorService.advanceStep(sim.id, {
+      message: 'We value your experience and offer ₹163,700.',
+      offer_value: 163700,
+      action: 'COUNTER_OFFER',
+      sender_role: 'Recruiter',
+    });
+
+    assert.strictEqual(turn2.deadlockInitiated, true, 'Deadlock should be initiated on impasse at round 8');
+
+    const updated = await db.getSimulation(sim.id);
+
+    // 1. Max rounds must be extended from 8 to 10 (+2 rounds)
+    assert.strictEqual(updated.max_rounds, 10, 'Max rounds should be extended by 2 (8 -> 10)');
+
+    // 2. Deadlock resolution must be initiated and recorded
+    assert.ok(updated.deadlock_resolution, 'Deadlock resolution object should be present');
+    assert.strictEqual(updated.status, 'AGREEMENT_REACHED', 'Collaborative agents should reach agreement in automated resolution');
+    assert.strictEqual(updated.deadlock_resolution.counter_offer_attempts, 2, 'Should execute 2 attempts');
+
+    // 3. Transcript must contain deadlock notice, compromise proposal, attempt 1, and attempt 2
+    const msgs = updated.messages.map((m) => m.message);
+    assert.ok(msgs.some((m) => m.includes('DEADLOCK DETECTED')), 'Transcript must contain DEADLOCK DETECTED notice');
+    assert.ok(msgs.some((m) => m.includes('ORCHESTRATOR COMPROMISE PROPOSAL')), 'Transcript must contain compromise proposal');
+    assert.ok(msgs.some((m) => m.includes('Attempt 1 of 2')), 'Transcript must show Attempt 1 of 2');
+    assert.ok(msgs.some((m) => m.includes('Attempt 2 of 2')), 'Transcript must show Attempt 2 of 2');
+    assert.ok(msgs.some((m) => m.includes('AGREEMENT REACHED')), 'Transcript must show final AGREEMENT REACHED notice');
+  });
+
+  await test('19. Post-Deadlock Updates: Negotiation Metrics & Agent Status update after deadlock rounds in Simulation & Practice Mode', async () => {
+    // 1. Simulation Mode (AI vs AI)
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 4,
+      customAgents: [
+        { id: 'buyer', role: 'Buyer', name: 'Buyer', personality: 'Collaborative', current_offer: 95000 },
+        { id: 'seller', role: 'Seller', name: 'Seller', personality: 'Collaborative', current_offer: 105000 },
+      ],
+    });
+
+    await db.updateSimulation(sim.id, { current_round: 4, current_gap: 10000 });
+    const initialOffersCount = (sim.offers || []).length;
+
+    // Trigger deadlock and automated resolution
+    await orchestratorService.initiateDeadlockResolution(sim.id, { reason: 'Impasse reached' });
+    const resolvedSim = await db.getSimulation(sim.id);
+
+    // Current Round must have incremented post-deadlock
+    assert.ok(Number(resolvedSim.current_round) > 4, `Round must increment post-deadlock (was 4, now ${resolvedSim.current_round})`);
+    // Offers exchanged must include post-deadlock counter-offer & accept
+    assert.ok((resolvedSim.offers || []).length > initialOffersCount, 'Offers count must increase with post-deadlock offers');
+    // Agent status and stances must be updated to Agreed
+    const buyerAgent = resolvedSim.agents.find((a) => a.role === 'Buyer');
+    const sellerAgent = resolvedSim.agents.find((a) => a.role === 'Seller');
+    assert.strictEqual(buyerAgent.stance, 'Agreed', 'Buyer agent stance must update to Agreed');
+    assert.strictEqual(sellerAgent.stance, 'Agreed', 'Seller agent stance must update to Agreed');
+    assert.strictEqual(resolvedSim.current_gap, 0, 'Current gap must update to 0 upon agreement');
+    assert.strictEqual(resolvedSim.agreement_likelihood, 100, 'Agreement likelihood must update to 100%');
+
+    // 2. Practice Mode (Human vs AI)
+    const practiceSim = await orchestratorService.initializeSimulation({
+      scenarioId: 'job-offer',
+      maxRounds: 6,
+      customAgents: [
+        { id: 'recruiter', role: 'Recruiter', name: 'Recruiter', personality: 'Collaborative', current_offer: 160000 },
+        { id: 'candidate', role: 'Candidate', name: 'Candidate', personality: 'Human', is_human: true, current_offer: 170000 },
+      ],
+    });
+
+    await db.updateSimulation(practiceSim.id, { current_round: 6, current_gap: 10000 });
+    await orchestratorService.initiateDeadlockResolution(practiceSim.id, { reason: 'Deadlock impasse' });
+
+    const preCounterOffers = (await db.getSimulation(practiceSim.id)).offers.length;
+
+    // Human submits counter-offer (Attempt 1 of 2)
+    const counterRes = await orchestratorService.handleDeadlockAction(practiceSim.id, {
+      action: 'COUNTER_OFFER',
+      offer_value: 164000,
+      sender_role: 'Candidate',
+    });
+
+    const postCounterSim = counterRes.simulation;
+    // Round must increment
+    assert.strictEqual(postCounterSim.current_round, 7, 'Round must increment to 7 on post-deadlock counter-offer');
+    // Offers count must include new offer
+    assert.ok(postCounterSim.offers.length > preCounterOffers, 'Offers exchanged must include human counter-offer');
+    // Human agent status and offer must reflect latest proposal
+    const humanInSim = postCounterSim.agents.find((a) => a.role === 'Candidate');
+    assert.strictEqual(humanInSim.current_offer, 164000, 'Human agent current_offer must update to 164000');
+    assert.ok(['Compromising', 'Agreed'].includes(humanInSim.stance), 'Human agent stance must update dynamically');
+  });
+
+  await test('20. Practice Mode: 0-Offer initialization & 3-Message non-offer limit triggers Deadlock', async () => {
+    // 1. In Practice Mode, human participant's current_offer must initialize to 0
+    const sim = await orchestratorService.initializeSimulation({
+      scenarioId: 'vendor-pricing',
+      maxRounds: 10,
+      customAgents: [
+        { id: 'seller', role: 'Seller', name: 'Seller', personality: 'Collaborative', current_offer: 110000 },
+        { id: 'buyer', role: 'Buyer', name: 'Buyer', personality: 'Human', is_human: true },
+      ],
+    });
+
+    const humanAgent = sim.agents.find((a) => a.is_human === true || a.personality === 'Human');
+    assert.strictEqual(humanAgent.current_offer, 0, 'Human participant current_offer must initialize to 0 before typing any offer');
+
+    // 2. Human sends message without offer (e.g. "hi") -> Attempt 1 of 3
+    const step1 = await orchestratorService.advanceStep(sim.id, {
+      message: 'hi',
+      sender_role: 'Buyer',
+      sender_name: 'Buyer',
+      is_human: true,
+    });
+    const simAfter1 = await db.getSimulation(sim.id);
+    const humanAfter1 = simAfter1.agents.find((a) => a.is_human);
+    assert.strictEqual(humanAfter1.current_offer, 0, 'Human participant current_offer must remain 0 after sending "hi"');
+    const noticeMsg = (simAfter1.messages || []).find(m => m.message?.includes('Attempt 1 of 3 non-offer messages'));
+    assert.ok(noticeMsg, 'Notice (Attempt 1 of 3) must be posted after 1st non-offer message');
+
+    // AI counter turn
+    await orchestratorService.advanceStep(sim.id);
+
+    // 3. Human sends 2nd non-offer message -> Attempt 2 of 3
+    await orchestratorService.advanceStep(sim.id, {
+      message: 'hello there',
+      sender_role: 'Buyer',
+      sender_name: 'Buyer',
+      is_human: true,
+    });
+    const simAfter2 = await db.getSimulation(sim.id);
+    const warnMsg = (simAfter2.messages || []).find(m => m.message?.includes('Attempt 2 of 3'));
+    assert.ok(warnMsg, 'Warning (Attempt 2 of 3) must be posted after 2nd non-offer message');
+
+    // AI counter turn
+    await orchestratorService.advanceStep(sim.id);
+
+    // 4. Human sends 3rd non-offer message -> Deadlock initiated!
+    const step3 = await orchestratorService.advanceStep(sim.id, {
+      message: 'what is your offer',
+      sender_role: 'Buyer',
+      sender_name: 'Buyer',
+      is_human: true,
+    });
+
+    const simAfter3 = await db.getSimulation(sim.id);
+    assert.ok(simAfter3.deadlock_resolution?.active, 'Deadlock resolution must be active after 3rd non-offer message');
+    assert.strictEqual(simAfter3.deadlock_resolution.type, 'NON_OFFER_DEADLOCK', 'Deadlock type must be NON_OFFER_DEADLOCK');
+    const dlNotice = (simAfter3.messages || []).find(m => m.message?.includes('DEADLOCK DETECTED') && m.message?.includes('Maximum limit of 3 consecutive messages without a numerical offer'));
+    assert.ok(dlNotice, 'Deadlock Notice explaining 3 consecutive messages limit must be posted');
+    const dlInstr = (simAfter3.messages || []).find(m => m.message?.includes('maximum of 2 counter-offer attempts'));
+    assert.ok(dlInstr, 'Deadlock Instruction for 2 counter-offer attempts must be posted in Practice Mode');
   });
 
   console.log(`\n========================================`);

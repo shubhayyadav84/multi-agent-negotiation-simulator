@@ -32,7 +32,7 @@ const PRACTICE_SCENARIOS = [
     shortDescription:
       'Negotiate from either side of the table: step in as the enterprise procurement buyer seeking volume discounts, or as the supplier defending profit margins and net payment terms.',
     participantText: '1 Human Negotiator vs 1 AI Agent',
-    estimatedRounds: '8 Rounds Dynamic',
+    estimatedRounds: '12 Rounds Dynamic',
     keyLevers: ['Unit Price (₹)', 'Payment Terms (Net Days)', 'Delivery SLA (Weeks)'],
     tacticalSkills: ['Anchoring & Framing', 'Volume Concessions', 'Contract Boundary Defense'],
   },
@@ -62,7 +62,7 @@ const PRACTICE_SCENARIOS = [
     icon: PieChart,
     selectableSides: 'Lead Software Engineer, Product Manager, or Marketing Director',
     shortDescription:
-      'Step into an executive resource allocation summit. Negotiate as the Lead Software Engineer, Product Manager, or Marketing Director to defend your division\u2019s capital while reaching cross-functional compromise within a strict \u20b91 Crore ceiling.',
+      'Step into an executive resource allocation summit. Negotiate as the Lead Software Engineer, Product Manager, or Marketing Director to defend your division\u2019s capital while reaching cross-functional compromise within a strict \u20b910 Lakh ceiling.',
     participantText: '1 Human Lead vs AI Stakeholders',
     estimatedRounds: '12 Rounds Multilateral',
     keyLevers: ['Engineering Budget (₹)', 'Product & Design (₹)', 'Marketing & Growth (₹)'],
@@ -188,6 +188,8 @@ const PracticeMode = () => {
                   src={scenario.image}
                   alt={scenario.name}
                   className="practice-card-img"
+                  loading="lazy"
+                  decoding="async"
                   onError={(e) => {
                     if (e.target.src !== scenario.fallbackImage) {
                       e.target.src = scenario.fallbackImage;

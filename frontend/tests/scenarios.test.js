@@ -24,7 +24,7 @@ test('required fields present and non-empty', () => {
     for (const f of REQUIRED_SCENARIO) assert.ok(f in s, `${s.id} missing ${f}`);
     assert.ok(nonEmpty(s.name) && nonEmpty(s.description) && nonEmpty(s.context));
     assert.ok(s.topics.length >= 4);
-    assert.equal(s.agents.length, 2);
+    assert.equal(s.agents.length, s.participantCount);
     for (const a of s.agents) {
       for (const f of REQUIRED_AGENT) assert.ok(f in a, `${s.id}/${a.id} missing ${f}`);
       assert.ok(nonEmpty(a.role) && nonEmpty(a.roleDescription) && nonEmpty(a.primaryGoal));
@@ -88,8 +88,8 @@ test('sample values admit a feasible agreement', () => {
   assert.ok(j.candidateMinSalary.value <= j.candidateTargetSalary.value);
  
   const b = p('project-budget');
-  assert.ok(b.deptAMinOperationalFunding.value + b.deptBMinOperationalFunding.value <= b.totalBudget.value);
-  assert.ok(b.deptAProjectCostEstimate.value + b.deptBProjectCostEstimate.value > b.totalBudget.value);
+  assert.ok(b.deptAMinOperationalFunding.value + b.deptBMinOperationalFunding.value + (b.deptCMinOperationalFunding?.value || 0) <= b.totalBudget.value);
+  assert.ok(b.deptAProjectCostEstimate.value + b.deptBProjectCostEstimate.value + (b.deptCProjectCostEstimate?.value || 0) > b.totalBudget.value);
   assert.ok(b.deptAMinSharedHours.value + b.deptBMinSharedHours.value <= b.sharedResourceHours.value);
   assert.ok(b.deptASharedHoursRequested.value + b.deptBSharedHoursRequested.value > b.sharedResourceHours.value);
   assert.ok(b.deptAMinOperationalFunding.value <= b.deptAProjectCostEstimate.value);

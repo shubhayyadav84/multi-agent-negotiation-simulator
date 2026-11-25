@@ -36,6 +36,7 @@ import {
   getSimulationState,
   getTacticalRecommendations,
 } from '../services/simulationApi';
+import SentimentJourneyTimeline from '../components/SentimentJourneyTimeline';
 import './HistoryReports.css';
 
 // Official supported scenarios
@@ -44,10 +45,15 @@ const OFFICIAL_SCENARIO_IDS = ['vendor-pricing', 'job-offer', 'project-budget'];
 
 // Helper to determine simulation mode from metadata
 function getSimulationModeLabel(sim) {
-  if (sim.simulation_mode) return sim.simulation_mode;
-  if (sim.mode) return sim.mode;
+  if (!sim) return 'Agent vs Agent (Autonomous)';
+  const rawMode = `${sim.simulation_mode || ''} ${sim.mode || ''}`.toLowerCase();
   const agents = sim.agents || [];
-  if (agents.some(a => a.name?.toLowerCase().includes('human') || a.role?.toLowerCase().includes('human') || a.is_human)) {
+  const isPractice =
+    rawMode.includes('practice') ||
+    sim.is_practice === true ||
+    (sim.id && String(sim.id).includes('practice')) ||
+    agents.some(a => a.name?.toLowerCase().includes('human') || a.role?.toLowerCase().includes('human') || a.is_human || a.personality === 'Human');
+  if (isPractice) {
     return 'Human vs Agent (Practice Mode)';
   }
   return 'Agent vs Agent (Autonomous)';
@@ -56,13 +62,30 @@ function getSimulationModeLabel(sim) {
 // Helper to parse vendor and buyer details
 function getParticipants(sim) {
   const agents = sim.agents || [];
-  const vendor = agents.find(a =>
-    a.role?.toLowerCase().includes('vendor') ||
-    a.role?.toLowerCase().includes('seller') ||
-    a.role?.toLowerCase().includes('provider') ||
-    a.role?.toLowerCase().includes('recruiter') ||
-    a.role?.toLowerCase().includes('supplier')
-  ) || agents[1] || {
+  if (agents.length >= 2) {
+    const sid = (sim.scenario_id || '').toLowerCase();
+    if (sid.includes('job')) {
+      const recruiter = agents.find(a => {
+        const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+        return k.includes('hiring') || k.includes('recruiter') || k.includes('employer') || k.includes('manager');
+      }) || agents[0];
+      const candidate = agents.find(a => a !== recruiter) || agents[1];
+      return { vendor: recruiter, buyer: candidate };
+    }
+  }
+
+  const vendor = agents.find(a => {
+    const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+    return (
+      k.includes('vendor') ||
+      k.includes('seller') ||
+      k.includes('provider') ||
+      k.includes('recruiter') ||
+      k.includes('hiring') ||
+      k.includes('supplier') ||
+      k.includes('marketing')
+    );
+  }) || agents[0] || {
     name: 'Enterprise Vendor Lead',
     role: 'Vendor',
     personality: 'Analytical',
@@ -70,13 +93,18 @@ function getParticipants(sim) {
     stance: 'Active Participant',
   };
 
-  const buyer = agents.find(a =>
-    a.role?.toLowerCase().includes('buyer') ||
-    a.role?.toLowerCase().includes('client') ||
-    a.role?.toLowerCase().includes('candidate') ||
-    a.role?.toLowerCase().includes('human') ||
-    a.role?.toLowerCase().includes('procurement')
-  ) || agents[0] || {
+  const buyer = agents.find(a => {
+    if (a === vendor) return false;
+    const k = `${a.id || ''} ${a.role || ''} ${a.name || ''}`.toLowerCase();
+    return (
+      k.includes('buyer') ||
+      k.includes('client') ||
+      k.includes('candidate') ||
+      k.includes('human') ||
+      k.includes('procurement') ||
+      k.includes('engineering')
+    );
+  }) || agents.find(a => a !== vendor) || agents[1] || {
     name: 'Procurement Specialist',
     role: 'Buyer',
     personality: 'Collaborative',
@@ -97,8 +125,8 @@ function formatCurrency(val, currency = '₹') {
 function isLeftInBetween(sim) {
   if (!sim) return false;
 
-  // 1. Explicitly left in between or paused
-  if (sim.status === 'LEFT_IN_BETWEEN' || sim.status === 'PAUSED') {
+  // 1. Explicitly left in between, paused, or running (abandoned/left in between without ending)
+  if (sim.status === 'LEFT_IN_BETWEEN' || sim.status === 'PAUSED' || sim.status === 'RUNNING') {
     return true;
   }
 
@@ -114,22 +142,12 @@ function isLeftInBetween(sim) {
     if (hasLeftMsg) return true;
   }
 
-  // 3. Deadlocks are NOT left in between
-  if (sim.status === 'DEADLOCK') {
+  // 3. Deadlocks or Completed/Agreed negotiations are NOT left in between
+  if (sim.status === 'DEADLOCK' || sim.status === 'COMPLETED' || sim.status === 'AGREEMENT_REACHED') {
     return false;
   }
 
-  // 4. Completed agreement
-  const hasAgreedData = Boolean(
-    sim.agreement &&
-      ((sim.agreement.final_value !== undefined && sim.agreement.final_value !== null) ||
-        (sim.agreement.agreed_value !== undefined && sim.agreement.agreed_value !== null))
-  );
-  const isAgreement = (sim.status === 'AGREEMENT_REACHED' || sim.status === 'COMPLETED') && hasAgreedData;
-  if (isAgreement) {
-    return false;
-  }
-
+  // Any other unfinished/interrupted status is Left in Between
   return true;
 }
 
@@ -188,17 +206,7 @@ export default function HistoryReports() {
         });
 
         // Filter strictly to the 3 official scenarios: vendor-pricing, job-offer, project-budget
-        // Strictly exclude practice mode sessions from Simulation History
         const officialSims = userSims.filter(s => {
-          const isPractice =
-            s.mode === 'practice' ||
-            s.is_practice === true ||
-            (s.id && s.id.includes('practice')) ||
-            (Array.isArray(s.agents) && s.agents.some((a) => a.personality === 'Human' || a.is_human === true));
-          if (isPractice) {
-            return false;
-          }
-
           const sid = (s.scenario_id || '').toLowerCase();
           const title = (s.scenario_title || '').toLowerCase();
 
@@ -345,15 +353,16 @@ export default function HistoryReports() {
     window.print();
   };
 
-  // Filter & Sort Logic: strictly Completed, Paused, Left in Between, or Deadlock (NO Running)
+  // Filter & Sort Logic: Completed, Agreements, Paused, Left in Between, Deadlocks, or abandoned Running
   const filteredSimulations = useMemo(() => {
     return simulations.filter(sim => {
-      // Exclude all RUNNING or CREATED simulations
+      // Include COMPLETED, AGREEMENT_REACHED, PAUSED, LEFT_IN_BETWEEN, DEADLOCK, and RUNNING (treated as Left in Between)
       const isAllowedStatus = sim.status === 'COMPLETED' ||
         sim.status === 'AGREEMENT_REACHED' ||
         sim.status === 'PAUSED' ||
         sim.status === 'LEFT_IN_BETWEEN' ||
-        sim.status === 'DEADLOCK';
+        sim.status === 'DEADLOCK' ||
+        sim.status === 'RUNNING';
       if (!isAllowedStatus) return false;
 
       const mode = getSimulationModeLabel(sim);
@@ -405,7 +414,8 @@ export default function HistoryReports() {
       s.status === 'AGREEMENT_REACHED' ||
       s.status === 'PAUSED' ||
       s.status === 'LEFT_IN_BETWEEN' ||
-      s.status === 'DEADLOCK'
+      s.status === 'DEADLOCK' ||
+      s.status === 'RUNNING'
     );
     const total = validSims.length;
     const agreements = validSims.filter(s => (s.status === 'AGREEMENT_REACHED' || s.status === 'COMPLETED') && !isLeftInBetween(s)).length;
@@ -991,6 +1001,13 @@ export default function HistoryReports() {
             </div>
           )}
 
+          {/* Sentiment Journey Timeline & Emotional Trajectory Visualizer (Member 2 Feature) */}
+          {selectedSim.messages && selectedSim.messages.length > 0 && (
+            <div className="report-sentiment-section">
+              <SentimentJourneyTimeline simulation={selectedSim} />
+            </div>
+          )}
+
           {/* Turn-by-Turn Negotiation Transcript */}
           <div className="report-transcript-section">
             <h2 className="section-heading">
@@ -1229,7 +1246,7 @@ export default function HistoryReports() {
                 const modeLabel = getSimulationModeLabel(sim);
                 const { vendor, buyer } = getParticipants(sim);
                 const isEarly = isLeftInBetween(sim);
-                const hasAgreement = (sim.status === 'AGREEMENT_REACHED' || (sim.agreement && sim.agreement.agreed_value)) && !isEarly;
+                const hasAgreement = (sim.status === 'AGREEMENT_REACHED' || sim.status === 'COMPLETED' || Boolean(sim.agreement?.final_value || sim.agreement?.agreed_value)) && !isEarly && sim.status !== 'DEADLOCK';
 
                 return (
                   <div key={sim.id} className="history-card">
@@ -1281,7 +1298,7 @@ export default function HistoryReports() {
                         <span className="f-label">Final Deal / Spread</span>
                         <span className="f-val">
                           {hasAgreement
-                            ? formatCurrency(sim.agreement?.final_value || vendor.current_offer, sim.currency)
+                            ? formatCurrency(sim.agreement?.final_value || sim.agreement?.agreed_value || vendor.current_offer, sim.currency)
                             : isEarly
                             ? 'Left in Between'
                             : sim.status === 'DEADLOCK'
@@ -1300,7 +1317,7 @@ export default function HistoryReports() {
                       <div className="f-metric-block">
                         <span className="f-label">Synergy</span>
                         <span className="f-val text-likelihood">
-                          {sim.agreement_likelihood || 50}%
+                          {isEarly ? '—' : `${sim.agreement_likelihood || 50}%`}
                         </span>
                       </div>
                     </div>

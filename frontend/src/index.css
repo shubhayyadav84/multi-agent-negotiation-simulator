@@ -100,7 +100,11 @@ body {
 .app-container {
   display: flex;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
   background-color: var(--bg-app);
+  overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 /* Sidebar Styles (Exact match to uploaded Deep UI style) */
@@ -842,9 +846,24 @@ body {
     display: flex;
   }
 
+  .app-container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
   .main-wrapper {
-    margin-left: 0;
-    width: 100%;
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+  }
+
+  .page-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .app-header {
@@ -961,6 +980,42 @@ body {
 
   .personality-options-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-container {
+    padding: 14px 10px;
+  }
+
+  .app-header {
+    padding: 8px 10px;
+    min-height: 56px;
+    gap: 8px;
+  }
+
+  .header-title-group {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .header-page-title {
+    font-size: clamp(0.95rem, 4.2vw, 1.1rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .header-subtitle {
+    display: none;
+  }
+
+  .agent-role-card {
+    padding: 16px 12px;
+  }
+
+  .content-card {
+    padding: 16px 14px;
   }
 }
 

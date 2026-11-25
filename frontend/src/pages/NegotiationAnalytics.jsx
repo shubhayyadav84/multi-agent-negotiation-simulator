@@ -26,14 +26,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { listSimulations } from '../services/simulationApi';
+import { AnalyticsPanels } from '../components/AnalyticsPanels';
+import { personalityWinRates } from '../utils/analyticsMetrics';
 import './NegotiationAnalytics.css';
 
 // Helper to determine if a simulation was left in between or ended early (identical to HistoryReports)
 function isLeftInBetween(sim) {
   if (!sim) return false;
 
-  // 1. Explicitly left in between or paused
-  if (sim.status === 'LEFT_IN_BETWEEN' || sim.status === 'PAUSED') return true;
+  // 1. Explicitly left in between, paused, or running (left in between without ending)
+  if (sim.status === 'LEFT_IN_BETWEEN' || sim.status === 'PAUSED' || sim.status === 'RUNNING') return true;
 
   // 2. Transcript contains explicit leave in between message
   if (Array.isArray(sim.messages)) {
@@ -47,17 +49,12 @@ function isLeftInBetween(sim) {
     if (hasLeftMsg) return true;
   }
 
-  // 3. Deadlocks are NOT left in between
-  if (sim.status === 'DEADLOCK') return false;
+  // 3. Deadlocks or completed/agreed negotiations are NOT left in between
+  if (sim.status === 'DEADLOCK' || sim.status === 'COMPLETED' || sim.status === 'AGREEMENT_REACHED') {
+    return false;
+  }
 
-  // 4. Completed agreement
-  const hasAgreedData = Boolean(
-    sim.agreement &&
-      ((sim.agreement.final_value !== undefined && sim.agreement.final_value !== null) ||
-        (sim.agreement.agreed_value !== undefined && sim.agreement.agreed_value !== null))
-  );
-  const isAgreement = (sim.status === 'AGREEMENT_REACHED' || sim.status === 'COMPLETED') && hasAgreedData;
-  if (isAgreement) return false;
+  // Any other unfinished/interrupted status is Left in Between
   return true;
 }
 
@@ -181,7 +178,7 @@ export default function NegotiationAnalytics() {
   const [analyticsMode, setAnalyticsMode] = useState('SIMULATION');
 
   const [simulations, setSimulations] = useState([]);
-  const [practiceSessions, setPracticeSessions] = useState(() => getStoredPracticeSessions());
+  const [practiceSessions, setPracticeSessions] = useState(() => getStoredPracticeSessions().filter((s) => !String(s.id || '').startsWith('practice-seed')));
   const [loading, setLoading] = useState(true);
   const [hoveredMonth, setHoveredMonth] = useState(null);
 
@@ -206,7 +203,7 @@ export default function NegotiationAnalytics() {
   const reloadPracticeSessions = () => {
     setLoading(true);
     setTimeout(() => {
-      setPracticeSessions(getStoredPracticeSessions());
+      setPracticeSessions(getStoredPracticeSessions().filter((s) => !String(s.id || '').startsWith('practice-seed')));
       setLoading(false);
     }, 350);
   };
@@ -214,7 +211,7 @@ export default function NegotiationAnalytics() {
   const handleRefreshTelemetry = async () => {
     setLoading(true);
     try {
-      setPracticeSessions(getStoredPracticeSessions());
+      setPracticeSessions(getStoredPracticeSessions().filter((s) => !String(s.id || '').startsWith('practice-seed')));
       await fetchSimulations();
     } catch (e) {
       console.warn('Telemetry refresh error:', e);
@@ -248,8 +245,7 @@ export default function NegotiationAnalytics() {
           return false;
         });
 
-        // Filter strictly to the 3 official scenarios: vendor-pricing, job-offer, project-budget
-        // Exclude practice sessions from Simulation Mode analytics
+        // 1. Simulation Mode: Filter strictly to official scenarios (excluding practice)
         const officialSims = userSims.filter((s) => {
           const isPractice =
             s.mode === 'practice' ||
@@ -271,7 +267,35 @@ export default function NegotiationAnalytics() {
           );
         });
 
+        // 2. Practice Mode: Filter real practice sessions from DB
+        const officialPracticeSims = userSims.filter((s) => {
+          const isPractice =
+            s.mode === 'practice' ||
+            s.is_practice === true ||
+            (s.id && s.id.includes('practice')) ||
+            (Array.isArray(s.agents) && s.agents.some((a) => a.personality === 'Human' || a.is_human === true));
+          if (!isPractice) return false;
+
+          const sid = (s.scenario_id || '').toLowerCase();
+          const title = (s.scenario_title || '').toLowerCase();
+          if (title.includes('saas') || title.includes('lease') || title.includes('office space')) return false;
+          return (
+            sid === 'vendor-pricing' ||
+            sid === 'job-offer' ||
+            sid === 'project-budget' ||
+            title.includes('vendor') ||
+            title.includes('job') ||
+            title.includes('project')
+          );
+        }).map((s) => ({
+          ...s,
+          score: s.status === 'COMPLETED' || s.status === 'AGREEMENT_REACHED' ? 92 : s.status === 'DEADLOCK' ? 45 : 65,
+        }));
+
         setSimulations(officialSims);
+        if (officialPracticeSims.length > 0) {
+                    setPracticeSessions(officialPracticeSims.filter((s) => s.status !== 'RUNNING' && s.status !== 'CREATED'));
+        }
       } else {
         setSimulations([]);
       }
@@ -301,7 +325,10 @@ export default function NegotiationAnalytics() {
     yearsSet.add(2026);
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [simulations, currentSystemYear]);
-
+  const winRateRows = useMemo(
+    () => personalityWinRates(analyticsMode === 'SIMULATION' ? simulations : practiceSessions),
+    [analyticsMode, simulations, practiceSessions]
+  );
   // ============================================================================
   // Simulation Mode Statistics
   // ============================================================================
@@ -312,7 +339,8 @@ export default function NegotiationAnalytics() {
         s.status === 'AGREEMENT_REACHED' ||
         s.status === 'PAUSED' ||
         s.status === 'LEFT_IN_BETWEEN' ||
-        s.status === 'DEADLOCK'
+        s.status === 'DEADLOCK' ||
+        s.status === 'RUNNING'
     );
 
     const total = validSims.length;
@@ -536,7 +564,7 @@ export default function NegotiationAnalytics() {
       return { month: m, score, count: mStats.total };
     });
 
-    const totalPracticeMinutes = Math.max(total * 4, 18);
+    const totalPracticeMinutes = total*4;
 
     return {
       total,
@@ -690,13 +718,13 @@ export default function NegotiationAnalytics() {
   // Secondary Strip Indicators
   const secondaryIndicators = analyticsMode === 'SIMULATION'
     ? [
-        { label: 'Active Agent Personas', value: '6 Personas', icon: Users, color: '#2563eb' },
+        { label: 'Active Agent Personas', value: '7 Personas', icon: Users, color: '#2563eb' },
         { label: 'Agreements Reached', value: `${stats.agreements}`, icon: CheckCircle2, color: '#10b981' },
         { label: 'Left in Between / Paused', value: `${stats.leftInBetween}`, icon: Clock, color: '#f59e0b' },
         { label: 'Total Simulation Time', value: `${stats.totalSimMinutes} mins`, icon: Activity, color: '#8b5cf6' },
       ]
     : [
-        { label: 'Target AI Opponents', value: '6 AI Archetypes', icon: Users, color: '#2563eb' },
+        { label: 'Target AI Opponents', value: '7 AI Archetypes', icon: Users, color: '#2563eb' },
         { label: 'Agreements Reached', value: `${practiceStats.agreements} Deals`, icon: CheckCircle2, color: '#10b981' },
         { label: 'Conceded / Walked Away', value: `${practiceStats.deadlocks + practiceStats.leftInBetween} Sessions`, icon: Clock, color: '#f59e0b' },
         { label: 'Total Practice Time', value: `${practiceStats.totalPracticeMinutes} mins`, icon: Activity, color: '#7c3aed' },
@@ -1327,22 +1355,7 @@ export default function NegotiationAnalytics() {
               </div>
 
               <div className="agent-perf-list">
-                {(analyticsMode === 'SIMULATION'
-                  ? [
-                      { name: 'Collaborative Archetype', rate: Math.min(95, stats.agreementRate + 15) },
-                      { name: 'Analytical Strategist', rate: Math.min(90, stats.agreementRate + 5) },
-                      { name: 'Pragmatic Conceder', rate: Math.max(50, stats.agreementRate - 5) },
-                      { name: 'Aggressive Anchor', rate: Math.max(40, stats.agreementRate - 12) },
-                      { name: 'Risk-Averse Defensive', rate: Math.max(35, stats.agreementRate - 18) },
-                    ]
-                  : [
-                      { name: 'Collaborative Archetype', rate: 86 },
-                      { name: 'Pragmatic Conceder', rate: 75 },
-                      { name: 'Analytical Strategist', rate: 68 },
-                      { name: 'Risk-Averse Defensive', rate: 58 },
-                      { name: 'Aggressive Anchor', rate: 45 },
-                    ]
-                ).map((agent) => (
+                {winRateRows.map((agent) => (
                   <div key={agent.name} className="agent-perf-row">
                     <div className="agent-perf-meta">
                       <span className="agent-perf-name">{agent.name}</span>
@@ -1368,6 +1381,7 @@ export default function NegotiationAnalytics() {
           {/* ========================================================================
               Row 5: Tertiary 3-Column Chart Grid
               ======================================================================== */}
+              <AnalyticsPanels sessions={analyticsMode === 'SIMULATION' ? simulations : practiceSessions} />
           <div className="analytics-charts-grid">
             {/* Card 7: Outcome Score Distribution (Clamped to prevent overflow) */}
             <div className="analytics-chart-card">

@@ -51,17 +51,23 @@ const AgentCard = ({ agent, currentPersonality, onPersonalityChange, scenarioAcc
 
   const isDefault = activePersonality === agent.defaultPersonality;
 
-  const agentKey = agent.id.replace(/-/g, '_');
-  const agentName = t ? (t(`agent_${agentKey}_name`) || agent.name) : agent.name;
-  const agentStakeholder = t ? (t(`agent_${agentKey}_stakeholder`) || agent.stakeholder) : agent.stakeholder;
-  const agentRoleDesc = t ? (t(`agent_${agentKey}_role_desc`) || agent.roleDescription) : agent.roleDescription;
-  const agentPrimaryGoal = t ? (t(`agent_${agentKey}_primary_goal`) || agent.primaryGoal) : agent.primaryGoal;
+  const agentKey = (agent.id || '').replace(/-/g, '_');
+  const getTranslatedOrFallback = (key, fallback) => {
+    if (!t) return fallback;
+    const val = t(key);
+    return (val && val !== key) ? val : fallback;
+  };
+
+  const agentName = getTranslatedOrFallback(`agent_${agentKey}_name`, agent.name);
+  const agentStakeholder = getTranslatedOrFallback(`agent_${agentKey}_stakeholder`, agent.stakeholder);
+  const agentRoleDesc = getTranslatedOrFallback(`agent_${agentKey}_role_desc`, agent.roleDescription);
+  const agentPrimaryGoal = getTranslatedOrFallback(`agent_${agentKey}_primary_goal`, agent.primaryGoal);
 
   const getPersonalityLabel = (p) => {
     if (!t) return p;
-    if (p === PERSONALITIES.AGGRESSIVE) return t('aggressive');
-    if (p === PERSONALITIES.COLLABORATIVE) return t('collaborative');
-    if (p === PERSONALITIES.RISK_AVERSE) return t('riskAverse');
+    if (p === PERSONALITIES.AGGRESSIVE) return t('aggressive') || p;
+    if (p === PERSONALITIES.COLLABORATIVE) return t('collaborative') || p;
+    if (p === PERSONALITIES.RISK_AVERSE) return t('riskAverse') || p;
     return p;
   };
 
@@ -74,9 +80,10 @@ const AgentCard = ({ agent, currentPersonality, onPersonalityChange, scenarioAcc
   };
 
   const getConstraintText = (constraint, idx) => {
-    if (!t) return constraint;
-    const key = `agent_${agentKey}_constraint_${idx}`;
-    return t(key) || constraint;
+    const rawFallback = typeof constraint === 'string'
+      ? constraint
+      : (constraint?.description || constraint?.text || '');
+    return getTranslatedOrFallback(`agent_${agentKey}_constraint_${idx}`, rawFallback);
   };
 
   return (

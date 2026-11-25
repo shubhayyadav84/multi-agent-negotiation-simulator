@@ -1,0 +1,457 @@
+/* ============================================================================
+   SentimentJourneyTimeline.css
+   Member 2: Sentiment Journey Timeline & Emotional Trajectory Visualizer
+   ============================================================================ */
+
+.sentiment-journey-container {
+  background: var(--bg-card, #0f172a);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
+  padding: 24px;
+  margin: 28px 0;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  position: relative;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+/* Header & Legend */
+.sentiment-journey-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon-pill {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #10b981;
+}
+
+.sentiment-journey-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+.sentiment-journey-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+/* Agent Legend Chips */
+.sentiment-agents-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.legend-chip:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.legend-chip.selected {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: #38bdf8;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+
+.legend-chip.faded {
+  opacity: 0.4;
+}
+
+.legend-chip-color {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-chip-role {
+  font-weight: 600;
+}
+
+.legend-chip-archetype {
+  color: #94a3b8;
+  font-size: 0.72rem;
+}
+
+/* SVG Canvas & Wrappers */
+.sentiment-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  background: radial-gradient(circle at 50% 30%, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 10px 0;
+}
+
+.sentiment-trajectory-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* Grid & Labels */
+.axis-label {
+  font-size: 10.5px;
+  font-family: monospace;
+  font-weight: 600;
+  fill: #64748b;
+}
+
+.axis-label.axis-zero {
+  fill: #e2e8f0;
+  font-weight: 700;
+}
+
+.axis-label.axis-positive {
+  fill: #34d399;
+}
+
+.axis-label.axis-negative {
+  fill: #fb7185;
+}
+
+.zone-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.zone-label-high {
+  fill: rgba(16, 185, 129, 0.75);
+}
+
+.zone-label-neutral {
+  fill: rgba(148, 163, 184, 0.5);
+}
+
+.zone-label-tension {
+  fill: rgba(244, 63, 94, 0.75);
+}
+
+.round-x-label {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #94a3b8;
+}
+
+/* Tension & Convergence Markers */
+.tension-pulse-ring {
+  fill: none;
+  stroke: #ef4444;
+  stroke-width: 1.5;
+  opacity: 0.6;
+  animation: tensionPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes tensionPulse {
+  0% { r: 6; opacity: 0.9; }
+  100% { r: 18; opacity: 0.0; }
+}
+
+.convergence-pulse-ring {
+  fill: none;
+  stroke: #fbbf24;
+  stroke-width: 1.5;
+  opacity: 0.7;
+  animation: convergencePulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes convergencePulse {
+  0% { r: 8; opacity: 1; }
+  100% { r: 22; opacity: 0; }
+}
+
+/* Floating Tooltip Card */
+.sentiment-tooltip-card {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -14px;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 12px 16px;
+  min-width: 240px;
+  max-width: 310px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), 0 0 15px rgba(56, 189, 248, 0.2);
+  pointer-events: none;
+  z-index: 50;
+  animation: tooltipFadeIn 0.15s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translate(-50%, -90%); }
+  to { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.tooltip-round-pill {
+  background: rgba(255, 255, 255, 0.10);
+  color: #f1f5f9;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.tooltip-speaker-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid;
+}
+
+.tooltip-stance-tag {
+  font-size: 0.70rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+.tooltip-stance-tag.stance-firm {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.tooltip-stance-tag.stance-compromising {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tooltip-stance-tag.stance-agreed {
+  background: rgba(5, 150, 105, 0.25);
+  color: #10b981;
+  border: 1px solid rgba(5, 150, 105, 0.4);
+}
+
+.tooltip-stance-tag.stance-awaiting-offer,
+.tooltip-stance-tag.stance-in-dialogue {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.tooltip-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.tooltip-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.metric-label {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metric-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.tooltip-quote-box {
+  border-left: 2px solid #38bdf8;
+  padding: 4px 8px;
+  background: rgba(56, 189, 248, 0.05);
+  border-radius: 0 4px 4px 0;
+}
+
+.quote-text {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #cbd5e1;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.quote-mark {
+  color: #38bdf8;
+  font-weight: bold;
+}
+
+/* Practice Mode Stance Ribbon (Test 2.3) */
+.practice-stance-ribbon {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-top: 14px;
+}
+
+.ribbon-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #93c5fd;
+}
+
+.ribbon-steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stance-step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.stance-step-chip.step-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+}
+
+.stance-step-chip.step-inactive {
+  background: rgba(255, 255, 255, 0.03);
+  color: #64748b;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.step-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.step-arrow {
+  color: #475569;
+}
+
+/* Summary Banner (Test 2.1 & 2.2) */
+.sentiment-summary-banner {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.summary-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-label {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.summary-val {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.summary-val.highlight {
+  color: #38bdf8;
+}
+
+/* Empty State */
+.sentiment-timeline-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  gap: 10px;
+}
+
+.empty-icon {
+  color: #64748b;
+}
+
+/* Utility Colors */
+.text-emerald-400 { color: #34d399 !important; }
+.text-rose-400 { color: #fb7185 !important; }
+.text-amber-400 { color: #fbbf24 !important; }
+.text-slate-300 { color: #cbd5e1 !important; }
+.text-blue-400 { color: #60a5fa !important; }
+

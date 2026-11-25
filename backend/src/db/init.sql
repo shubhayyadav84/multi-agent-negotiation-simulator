@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS simulations (
     agreement_likelihood INT DEFAULT 50,
     user_email VARCHAR(255),
     user_id VARCHAR(128),
+    scorecard JSONB,
+    deadlock_resolution JSONB,
+    deadlock_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -129,4 +132,3 @@ CREATE TABLE IF NOT EXISTS strategy_chat_messages (
 CREATE INDEX IF NOT EXISTS idx_strategy_bookmarks_user ON user_strategy_bookmarks(user_id);
 CREATE INDEX IF NOT EXISTS idx_strategy_chat_conv_user ON strategy_chat_conversations(user_id);
 CREATE INDEX IF NOT EXISTS idx_strategy_chat_msg_conv ON strategy_chat_messages(conversation_id);
-

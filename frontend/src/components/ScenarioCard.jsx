@@ -15,6 +15,12 @@ const scenarioImageMap = {
   'project-budget': '/images/scenarios/project-budget.png',
 };
 
+const scenarioWebpMap = {
+  'vendor-pricing': '/images/scenarios/vendor-pricing.webp',
+  'job-offer': '/images/scenarios/job-offer.webp',
+  'project-budget': '/images/scenarios/project-budget.webp',
+};
+
 const categoryIconMap = {
   'vendor-pricing': ShoppingBag,
   'job-offer': Users,
@@ -56,11 +62,18 @@ const ScenarioCard = ({ scenario, isSelected, onSelect }) => {
     >
       {/* Top Illustration Banner */}
       <div className="scenario-card-image-wrap">
-        <img
-          src={scenarioImage}
-          alt={scenarioName}
-          className="scenario-card-img"
-        />
+        <picture>
+          {scenarioWebpMap[scenario.id] && (
+            <source srcSet={scenarioWebpMap[scenario.id]} type="image/webp" />
+          )}
+          <img
+            src={scenarioImage}
+            alt={scenarioName}
+            className="scenario-card-img"
+            loading="lazy"
+            decoding="async"
+          />
+        </picture>
       </div>
 
       {/* Card Content Section */}

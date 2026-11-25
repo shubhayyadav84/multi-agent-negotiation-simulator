@@ -252,6 +252,7 @@ export function validateNegotiationConfig(scenarioInput, agentPersonalities = {}
         parameters: scenario.parameters ? structuredClone(scenario.parameters) : {},
         estimatedRounds: scenario.estimatedRounds || null,
         complexity: scenario.complexity || null,
+        agents: validatedAgents,
       },
       agents: validatedAgents,
     };

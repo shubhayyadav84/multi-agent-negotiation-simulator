@@ -202,7 +202,7 @@
 /* History Cards Grid */
 .history-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: 18px;
 }
 
@@ -1030,6 +1030,79 @@
 .text-success { color: #059669; }
 .text-warning { color: #d97706; }
 .text-danger { color: #dc2626; }
+
+/* Responsive Screen Breakpoints */
+@media (max-width: 768px) {
+  .history-page-container {
+    padding: 16px 14px 40px;
+  }
+
+  .history-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .history-search-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .search-input-wrap,
+  .filter-select-group {
+    width: 100%;
+  }
+
+  .filter-select {
+    flex: 1;
+  }
+
+  .history-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .report-detail-header-card,
+  .report-section-card {
+    padding: 18px 14px;
+  }
+
+  .report-kpi-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .report-actions-row {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-report-action {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .history-page-container {
+    padding: 12px 8px 32px;
+  }
+
+  .history-main-title {
+    font-size: 1.4rem;
+  }
+
+  .history-card {
+    padding: 14px 12px;
+  }
+
+  .history-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
 
 /* ==========================================================================
    PRINT STYLESHEET (FOR PDF DOWNLOAD & EXPORT)

@@ -79,6 +79,12 @@ const initDbConnection = async () => {
  */
 const runMigrations = async () => {
   if (!pool || !isNeonConnected) return;
+
+  if (process.env.SKIP_DB_MIGRATIONS === 'true') {
+    console.log('[Neon DB] Skipping migrations and strategy seeding for shared database.');
+    return;
+  }
+
   try {
     const sqlPath = path.join(__dirname, 'init.sql');
     const sql = fs.readFileSync(sqlPath, 'utf8');

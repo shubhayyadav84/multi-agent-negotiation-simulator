@@ -649,6 +649,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
 
   const agents = sim.agents || [];
   if (agents.length === 0) return sim;
+  const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
 
   const currentRoundMessages = (sim.messages || []).filter(
     (m) => m.round_number === sim.current_round && (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN')
@@ -724,7 +725,7 @@ function advanceLocalSimulation(simulationId, customMove = null) {
     }
     const targetRound = sim.targetAgreementRound;
 
-    const allAggressive = agents.length > 0 && agents.every((a) => (a.personality || '').toLowerCase().includes('aggressive'));
+   
     const canConcludeAgreement = rNum >= 5 && rNum >= targetRound && !allAggressive;
 
     if (sim.scenario_id === 'project-budget') {

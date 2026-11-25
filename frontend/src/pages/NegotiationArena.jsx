@@ -44,7 +44,6 @@ import SentimentJourneyTimeline from '../components/SentimentJourneyTimeline';
 import {
   startSimulation,
   getSimulationState,
-  getTacticalRecommendations,
   stepSimulation,
   sendDeadlockAction,
   pauseSimulation,
@@ -318,12 +317,13 @@ const NegotiationArena = () => {
   const [aiCoachEnabled, setAiCoachEnabled] = useState(true);
   const [metricsExpanded, setMetricsExpanded] = useState(false);
   const [practiceMessage, setPracticeMessage] = useState('');
+  const [practiceOfferValue, setPracticeOfferValue] = useState('');
   const [showPracticeReportModal, setShowPracticeReportModal] = useState(false);
   const [coachingData, setCoachingData] = useState(null);
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [coachingError, setCoachingError] = useState('');
 
-    // Text-to-speech settings
+  // Text-to-speech settings
   const [speechLanguage, setSpeechLanguage] = useState('en-IN');
   const [speechStatus, setSpeechStatus] = useState('');
 
@@ -701,6 +701,7 @@ const NegotiationArena = () => {
     setSpeakingMessageId(messageId);
     window.speechSynthesis.speak(utterance);
   };
+
   const transcriptEndRef = useRef(null);
   const timerRef = useRef(null);
   const simulationRef = useRef(null);
@@ -920,16 +921,15 @@ const NegotiationArena = () => {
     if ((!isHumanTurn || turnRunning || isTerminated || isPaused) && isListening) {
       stopVoiceDictation();
     }
-  }, [isHumanTurn, turnRunning, isTerminated, isPaused]);
+  }, [isHumanTurn, turnRunning, isTerminated, isPaused, isListening, stopVoiceDictation]);
 
-  // Always release the browser speech-recognition session when leaving the page.
   // Stop text-to-speech when leaving the page.
-useEffect(() => {
-  return () => {
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-  };
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
   }, []);
   const [showExitWarning, setShowExitWarning] = useState(false);
   const allowExitRef = useRef(false);
@@ -1008,6 +1008,7 @@ useEffect(() => {
 
       return;
     }
+
     // Normal Simulation Mode: navigate to the permanent negotiation report
     allowExitRef.current = true;
     if (simulation?.id) {
@@ -2735,7 +2736,6 @@ useEffect(() => {
               <div className="practice-dev-icon-wrap" style={{ background: isDeadlock ? '#fee2e2' : '#dcfce7' }}>
                 {isDeadlock ? <XCircle size={28} style={{ color: '#ef4444' }} /> : <CheckCircle2 size={28} style={{ color: '#16a34a' }} />}
               </div>
-
               <span className="practice-dev-badge">Practice Mode Telemetry</span>
               <h3 className="practice-dev-title">
                 {isDeadlock ? 'Negotiation Deadlock Audit' : 'Negotiation Agreement Report'}
@@ -2929,7 +2929,6 @@ useEffect(() => {
               >
                 Back to Practice Scenarios
               </button>
-
               <button
                 type="button"
                 className="btn-practice-dev-restart"
@@ -2940,7 +2939,6 @@ useEffect(() => {
               >
                 Restart Session
               </button>
-
               <button
                 type="button"
                 className="btn-practice-dev-close"
@@ -2952,8 +2950,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
-
     </div>
   );
 };

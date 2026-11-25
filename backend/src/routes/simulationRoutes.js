@@ -22,7 +22,6 @@ router.get('/', optionalFirebaseToken, listSimulations);
 
 // Tactical coaching recommendations
 router.get('/:id/recommendations', optionalFirebaseToken, getSimulationRecommendations);
-
 router.get('/:id', optionalFirebaseToken, getSimulationState);
 router.get('/:id/export', optionalFirebaseToken, exportSimulation);
 router.post('/:id/step', optionalFirebaseToken, advanceSimulationStep);

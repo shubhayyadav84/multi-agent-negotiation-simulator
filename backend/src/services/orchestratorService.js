@@ -1759,6 +1759,45 @@ const fixedOffer =
         message: 'Simulation is currently inactive. Turn was aborted.',
       };
     }
+        // Validate ordinary bilateral acceptance against the counterpart's latest valid offer.
+    let validatedAcceptanceValue = null;
+
+    const isExplicitAcceptance =
+      move.action === 'ACCEPT' || move.agreement_reached === true;
+
+    if (
+      isExplicitAcceptance &&
+      sim.scenario_id !== 'project-budget' &&
+      agents.length === 2
+    ) {
+      const counterpartOfferMessage = [...(sim.messages || [])]
+        .reverse()
+        .find((message) => {
+          const action = String(message.action || '').toUpperCase();
+
+          return (
+            message.sender_role === counterpartAgent?.role &&
+            (message.sender_type === 'AGENT' || message.sender_type === 'HUMAN') &&
+            !['ACCEPT', 'REJECT', 'STATUS', 'MESSAGE'].includes(action) &&
+            Number(message.offer_value) > 0
+          );
+        });
+
+      if (!counterpartOfferMessage) {
+        return {
+          simulation: sim,
+          advanced: false,
+          message: 'There is no valid offer from the other participant to accept.',
+        };
+      }
+
+      validatedAcceptanceValue = Number(counterpartOfferMessage.offer_value);
+
+      // An acceptance confirms the counterpart's offer; it is not a new proposal.
+      move.action = 'ACCEPT';
+      move.offer_value = null;
+      move.agreement_reached = true;
+    }
 
     // Guard: only the very first turn in a simulation can be an 'OFFER'. All subsequent turns are 'COUNTER_OFFER'
     let stepAction = move.action || 'COUNTER_OFFER';
@@ -1783,7 +1822,7 @@ const fixedOffer =
     });
 
     // 5. Record discrete numerical offer & update agent current standing
-    if (move.offer_value !== undefined && move.offer_value !== null && Number(move.offer_value) > 0) {
+    if (move.action !== 'ACCEPT' && move.offer_value !== undefined && move.offer_value !== null && Number(move.offer_value) > 0) {
       await db.addOffer({
         simulation_id: simulationId,
         round_number: sim.current_round,
@@ -1878,8 +1917,11 @@ const fixedOffer =
 
     // Require primary participants to have actively tabled offers before evaluating gap convergence
     const activeOfferMessages = (updatedSim.messages || []).filter(
-      (m) => (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') && m.offer_value
-    );
+  (m) =>
+    (m.sender_type === 'AGENT' || m.sender_type === 'HUMAN') &&
+    String(m.action || '').toUpperCase() !== 'ACCEPT' &&
+    Number(m.offer_value) > 0
+);
     const uniqueOfferSenders = new Set(activeOfferMessages.map((m) => m.sender_role || m.sender_name));
     const allHaveOffered = uniqueOfferSenders.size >= agents.length;
     const bothHaveOffered = allHaveOffered;
@@ -1889,9 +1931,15 @@ const fixedOffer =
     const threshold = typeof preset.agreement_threshold === 'number' ? preset.agreement_threshold : 0;
     const isLastRoundEnd = isRoundEnd && Number(sim.current_round) >= Number(sim.max_rounds || 10);
     const hasAgreementSoFar =
-      move.action === 'ACCEPT' ||
-      move.agreement_reached === true ||
-      (currentGap <= threshold && currentGap <= 0);
+  (move.action === 'ACCEPT' &&
+    (sim.scenario_id === 'project-budget' ||
+      agents.length !== 2 ||
+      validatedAcceptanceValue !== null)) ||
+  (move.agreement_reached === true &&
+    (sim.scenario_id === 'project-budget' ||
+      agents.length !== 2 ||
+      validatedAcceptanceValue !== null)) ||
+  (currentGap <= threshold && currentGap <= 0);
 
     let deadlock = this.detectDeadlock(updatedSim);
     if (!deadlock.detected && isLastRoundEnd && !hasAgreementSoFar) {
@@ -1944,6 +1992,7 @@ const fixedOffer =
       maxRounds: sim.max_rounds,
       isRoundEnd,
       settlementPrice:
+      validatedAcceptanceValue ??
   move.offer_value ??
   (
     currentGap <= threshold

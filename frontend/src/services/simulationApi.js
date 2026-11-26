@@ -26,6 +26,8 @@ async function getAuthHeaders() {
 
 // In-memory local simulations cache for offline/cold-start reliability
 const localSimulationsCache = new Map();
+// Track sessions created locally when the backend is unavailable
+const localSimulationIds = new Set();
 
 export async function checkBackendHealth() {
   try {
@@ -83,6 +85,7 @@ export async function startSimulation(scenarioId = 'vendor-pricing', customAgent
     local.user_email = userEmail;
     local.user_id = userId;
     localSimulationsCache.set(local.id, local);
+    localSimulationIds.add(local.id);
     return local;
   }
 }
@@ -164,49 +167,75 @@ export async function getTacticalRecommendations(simulationId) {
   }
 }
 
+
 export async function stepSimulation(simulationId, customMove = null) {
-  try {
-    const authHeaders = await getAuthHeaders();
-    const options = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
-    };
-    if (customMove) {
-      options.body = JSON.stringify(customMove);
-    }
-    const res = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/step`, options);
-
-    if (res.ok) {
-      const json = await res.json();
-      if (json.data && json.data.id) {
-        localSimulationsCache.set(json.data.id, json.data);
-      }
-      return json.data;
-    }
-
-    // Auto-retry once unauthenticated if token issue occurred
-    if ((res.status === 401 || res.status === 500) && Object.keys(authHeaders).length > 0) {
-      try {
-        const retryRes = await fetch(`${BACKEND_URL}/api/simulations/${simulationId}/resume`, {
-          method: 'POST',
-        });
-        if (retryRes.ok) {
-          const json = await retryRes.json();
-          if (json.data && json.data.id) {
-            localSimulationsCache.set(json.data.id, json.data);
-          }
-          return json.data;
-        }
-      } catch {
-        // fall through to local fallback
-      }
-    }
-  } catch (err) {
-    console.warn('[Simulation API] Step failed on backend, executing local step:', err.message);
+  // Genuine offline sessions should continue using local turn progression.
+  if (localSimulationIds.has(simulationId)) {
+    return advanceLocalSimulation(simulationId, customMove);
   }
 
-  // Local fallback turn progression for local simulations or during backend startup
-  return advanceLocalSimulation(simulationId, customMove);
+  const authHeaders = await getAuthHeaders();
+
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
+  };
+
+  if (customMove) {
+    options.body = JSON.stringify(customMove);
+  }
+
+  let res;
+
+  try {
+    res = await fetch(
+      `${BACKEND_URL}/api/simulations/${simulationId}/step`,
+      options
+    );
+  } catch (err) {
+    console.error('[Simulation API] Backend step request failed:', err.message);
+    throw new Error('Unable to connect to the negotiation server. Please check your connection and try again.');
+  }
+
+  // Retry the SAME step request without authentication only after an auth rejection.
+  if (res.status === 401 && Object.keys(authHeaders).length > 0) {
+    try {
+      res = await fetch(
+        `${BACKEND_URL}/api/simulations/${simulationId}/step`,
+        {
+          ...options,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    } catch (err) {
+      console.error('[Simulation API] Unauthenticated retry failed:', err.message);
+      throw new Error('Unable to retry the negotiation step. Please try again.');
+    }
+  }
+
+  let json;
+
+  try {
+    json = await res.json();
+  } catch {
+    throw new Error(`The negotiation server returned an invalid response (${res.status}).`);
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      json.error || json.message || `Negotiation step failed (${res.status}).`
+    );
+  }
+
+  if (!json.data) {
+    throw new Error('The negotiation server returned no simulation data.');
+  }
+
+  if (json.data.id) {
+    localSimulationsCache.set(json.data.id, json.data);
+  }
+
+  return json.data;
 }
 
 export async function pauseSimulation(simulationId) {
@@ -375,16 +404,25 @@ export async function restartSimulation(simulationId) {
     console.warn('[Simulation API] Restart error:', err.message);
   }
 
-  // Local fallback restart: generate brand-new simulation with randomized target agreement round
+  // Only restart sessions that were originally created locally.
+if (localSimulationIds.has(simulationId)) {
   const oldSim = localSimulationsCache.get(simulationId);
+
   if (oldSim) {
-    const newSim = createLocalSimulation(oldSim.scenario_id, oldSim.agents, oldSim.max_rounds);
+    const newSim = createLocalSimulation(
+      oldSim.scenario_id,
+      oldSim.agents,
+      oldSim.max_rounds
+    );
+
     newSim.id = simulationId;
     localSimulationsCache.set(simulationId, newSim);
+
     return newSim;
   }
+}
 
-  return null;
+return null;
 }
 
 /**

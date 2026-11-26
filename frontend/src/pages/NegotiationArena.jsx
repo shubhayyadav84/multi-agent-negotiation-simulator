@@ -44,6 +44,7 @@ import SentimentJourneyTimeline from '../components/SentimentJourneyTimeline';
 import {
   startSimulation,
   getSimulationState,
+  getTacticalRecommendations,
   stepSimulation,
   sendDeadlockAction,
   pauseSimulation,
@@ -301,6 +302,7 @@ const NegotiationArena = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreen] = useState(true);
   const [turnRunning, setTurnRunning] = useState(false);
+  const [simulationError, setSimulationError] = useState('');
   const turnRunningRef = useRef(false);
   useEffect(() => {
     turnRunningRef.current = turnRunning;
@@ -480,18 +482,10 @@ const NegotiationArena = () => {
     let agents = [...sim.agents];
 
     if (isPracticeMode) {
-      if (currentScenarioId === 'vendor-pricing') {
-        const seller = agents.find((a) => (a.role || '').toLowerCase().includes('seller') || (a.role || '').toLowerCase().includes('sales') || (a.id || '').includes('seller') || (a.id || '').includes('vendor'));
-        const buyer = agents.find((a) => (a.role || '').toLowerCase().includes('buyer') || (a.role || '').toLowerCase().includes('procurement') || (a.id || '').includes('buyer'));
-        if (seller && buyer) agents = [seller, buyer];
-      } else if (currentScenarioId === 'job-offer') {
-        const recruiter = agents.find((a) => (a.role || '').toLowerCase().includes('recruiter') || (a.role || '').toLowerCase().includes('hiring') || (a.id || '').includes('recruiter') || (a.id || '').includes('hiring'));
-        const candidate = agents.find((a) => (a.role || '').toLowerCase().includes('candidate') || (a.id || '').includes('candidate'));
-        if (recruiter && candidate) agents = [recruiter, candidate];
-      } else if (currentScenarioId === 'project-budget') {
-        const aiAgents = agents.filter((a) => a.personality !== 'Human' && a.is_human !== true && a.id !== location.state?.userRoleAgentId);
-        const humanAgents = agents.filter((a) => a.personality === 'Human' || a.is_human === true || a.id === location.state?.userRoleAgentId);
-        if (aiAgents.length > 0 && humanAgents.length > 0) agents = [...aiAgents, ...humanAgents];
+      const aiAgents = agents.filter((a) => a.personality !== 'Human' && a.is_human !== true && a.id !== location.state?.userRoleAgentId);
+      const humanAgents = agents.filter((a) => a.personality === 'Human' || a.is_human === true || a.id === location.state?.userRoleAgentId);
+      if (aiAgents.length > 0 && humanAgents.length > 0) {
+        agents = [...aiAgents, ...humanAgents];
       }
     } else {
       const presetAgents = scenarioMeta?.agents || [];
@@ -546,8 +540,8 @@ const NegotiationArena = () => {
       (location.state?.userRole?.id && activeTurnAgent?.id && activeTurnAgent.id.includes(location.state.userRole.id)) ||
       (activeTurnAgent?.role && location.state?.userRole?.title && activeTurnAgent.role.toLowerCase() === location.state.userRole.title.toLowerCase()) ||
       (activeTurnAgent?.role && location.state?.userRole?.role && activeTurnAgent.role.toLowerCase() === location.state.userRole.role.toLowerCase()) ||
-      (activeTurnAgent?.role && location.state?.userRole?.name && activeTurnAgent.role.toLowerCase().includes(location.state.userRole.name.toLowerCase())) ||
-      (activeTurnAgent?.role && location.state?.userSide === (activeTurnAgent.role.toLowerCase().includes('buyer') ? 'buyer' : 'seller')))
+      (activeTurnAgent?.role && location.state?.userRole?.name && activeTurnAgent.role.toLowerCase().includes(location.state.userRole.name.toLowerCase()))
+    )
   );
 
   const isAiOpponentTurn = Boolean(
@@ -621,18 +615,10 @@ const NegotiationArena = () => {
       actionType = isOpeningMove ? 'OFFER' : 'COUNTER_OFFER';
     } else if (intent.isAccept) {
       actionType = 'ACCEPT';
-      numericOffer = humanAgent?.current_offer || (currentScenarioId === 'project-budget' ? 380000 : null);
-      if (numericOffer === null) {
-        const counterpartMessages = (simulation?.messages || []).filter(
-          (m) => m.sender_type !== 'ORCHESTRATOR' && (m.sender_type === 'AGENT' || m.sender_role !== humanAgent?.role)
-        );
-        const lastCounterpartOfferMsg = [...counterpartMessages].reverse().find(
-          (m) => getMessageOffer(m)
-        );
-        numericOffer = lastCounterpartOfferMsg
-          ? getMessageOffer(lastCounterpartOfferMsg)
-          : (opponentAgent?.current_offer || (currentScenarioId === 'vendor-pricing' ? 10000 : 165000));
-      }
+      // Preserve Project Budget handling; backend validates bilateral acceptance.
+      numericOffer = currentScenarioId === 'project-budget'
+        ? (humanAgent?.current_offer || 380000)
+        : null;
     } else if (intent.isReject) {
       actionType = 'REJECT';
       numericOffer = null;
@@ -667,6 +653,7 @@ const NegotiationArena = () => {
       }
     } catch (err) {
       console.error('Error submitting practice message:', err);
+setSimulationError(err.message || 'Unable to submit your negotiation message. Please try again.');
     } finally {
       setTurnRunning(false);
     }
@@ -856,8 +843,10 @@ const NegotiationArena = () => {
           }
         }
       } catch (err) {
-        console.warn('Error taking turn:', err);
-      } finally {
+  console.warn('Error taking turn:', err);
+  setSimulationError(err.message || 'Unable to advance the simulation. Please try again.');
+  setIsPaused(true);
+} finally {
         turnRunningRef.current = false;
         setTurnRunning(false);
       }
@@ -888,6 +877,8 @@ const NegotiationArena = () => {
         }
       } catch (err) {
         console.warn('AI opponent step error in practice mode:', err);
+setSimulationError(err.message || 'Unable to get the AI opponent response. Please try again.');
+  setIsPaused(true);
       } finally {
         turnRunningRef.current = false;
         setTurnRunning(false);
@@ -1691,7 +1682,28 @@ const NegotiationArena = () => {
               </span>
             </div>
           </div>
-
+{simulationError && (
+  <div
+    role="alert"
+    style={{
+      padding: '10px 14px',
+      margin: '10px 14px',
+      borderRadius: '8px',
+      background: 'rgba(220, 38, 38, 0.12)',
+      color: '#dc2626',
+      fontSize: '13px',
+    }}
+  >
+    {simulationError}
+    <button
+      type="button"
+      onClick={() => setSimulationError('')}
+      style={{ marginLeft: '12px' }}
+    >
+      Dismiss
+    </button>
+  </div>
+)}
           {/* Transcript Scroll Area */}
           <div className="arena-transcript-body">
             {Object.keys(groupedMessages).length === 0 ? (

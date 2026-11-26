@@ -39,45 +39,111 @@ export function personalityWinRates(sessions) {
 /**
  * Concession velocity: how far each role moved its own offer from one round to the
  * next (absolute change), averaged over all sessions of one scenario.
- * `details` are full sessions (with `offers`). Round 1 has no previous offer, so curves start at round 2.
+ * `details` are full sessions (with `offers` or `messages`).
  */
 export function concessionVelocity(details, scenarioId) {
   const acc = {};
   let used = 0;
   let maxRound = 2;
+
+  const targetSid = String(scenarioId || '').toLowerCase();
+
+  const isScenarioMatch = (s) => {
+    if (!s) return false;
+    const sid = String(s.scenario_id || s.scenarioId || '').toLowerCase();
+    const title = String(s.scenario_title || s.title || '').toLowerCase();
+
+    if (targetSid.includes('vendor')) return sid.includes('vendor') || title.includes('vendor');
+    if (targetSid.includes('job')) return sid.includes('job') || title.includes('job');
+    if (targetSid.includes('project') || targetSid.includes('budget')) {
+      return sid.includes('project') || sid.includes('budget') || title.includes('project') || title.includes('budget');
+    }
+    return sid === targetSid;
+  };
+
   (details || []).forEach((s) => {
-    if (!s || s.scenario_id !== scenarioId || !Array.isArray(s.offers)) return;
+    if (!isScenarioMatch(s)) return;
+
+    // Ingest offers from s.offers or extract from s.messages if offers table is empty
+    let rawOffers = Array.isArray(s.offers) && s.offers.length > 0 ? s.offers : [];
+    if (rawOffers.length === 0 && Array.isArray(s.messages)) {
+      rawOffers = s.messages
+        .filter((m) => m && (m.offer_value !== null && m.offer_value !== undefined) && m.sender_type !== 'ORCHESTRATOR')
+        .map((m) => ({
+          round_number: m.round_number || 1,
+          agent_role: m.sender_role || m.sender_name,
+          offer_value: m.offer_value,
+          terms: m.terms,
+        }));
+    }
+
+    if (rawOffers.length === 0) return;
+
     const byRole = {};
-    s.offers.forEach((o) => {
-      const v = Number(o.offer_value);
-      const r = Number(o.round_number);
-      if (!o.agent_role || !Number.isFinite(v) || !Number.isFinite(r)) return;
-      (byRole[o.agent_role] = byRole[o.agent_role] || {})[r] = v; // last offer of the round wins
+    rawOffers.forEach((o) => {
+      let v = Number(o.offer_value ?? o.value ?? o.offer);
+      const r = Number(o.round_number ?? o.round ?? 1);
+      const rawRole = String(o.agent_role || o.sender_role || o.role || '').trim();
+      if (!rawRole || !Number.isFinite(r)) return;
+
+      const role = rawRole.replace(/\s*\((You|Human)\)$/i, '').trim();
+
+      // For project budget, extract individual department allocations if total was saved
+      if (targetSid.includes('project') || targetSid.includes('budget')) {
+        const t = o.terms || {};
+        const rLower = role.toLowerCase();
+        if (rLower.includes('eng') && Number.isFinite(Number(t.engineering ?? t.engineeringFunding))) {
+          v = Number(t.engineering ?? t.engineeringFunding);
+        } else if ((rLower.includes('mark') || rLower.includes('cmo')) && Number.isFinite(Number(t.marketing ?? t.marketingFunding))) {
+          v = Number(t.marketing ?? t.marketingFunding);
+        } else if ((rLower.includes('prod') || rLower.includes('ai')) && Number.isFinite(Number(t.product ?? t.productAIFunding))) {
+          v = Number(t.product ?? t.productAIFunding);
+        }
+      }
+
+      if (Number.isFinite(v)) {
+        (byRole[role] = byRole[role] || {})[r] = v;
+      }
     });
+
     let counted = false;
     Object.entries(byRole).forEach(([role, byRound]) => {
       const rounds = Object.keys(byRound).map(Number).sort((a, b) => a - b);
-      for (let i = 1; i < rounds.length; i += 1) {
-        const delta = Math.abs(byRound[rounds[i]] - byRound[rounds[i - 1]]);
+      if (rounds.length >= 2) {
+        for (let i = 1; i < rounds.length; i += 1) {
+          const delta = Math.abs(byRound[rounds[i]] - byRound[rounds[i - 1]]);
+          const roleAcc = acc[role] || (acc[role] = {});
+          const cell = roleAcc[rounds[i]] || (roleAcc[rounds[i]] = { sum: 0, n: 0 });
+          cell.sum += delta;
+          cell.n += 1;
+          counted = true;
+          if (rounds[i] > maxRound) maxRound = rounds[i];
+        }
+      } else if (rounds.length === 1) {
+        // Single round baseline step so 1-round sessions still plot an anchor point
+        const r = 2;
         const roleAcc = acc[role] || (acc[role] = {});
-        const cell = roleAcc[rounds[i]] || (roleAcc[rounds[i]] = { sum: 0, n: 0 });
-        cell.sum += delta;
+        const cell = roleAcc[r] || (roleAcc[r] = { sum: 0, n: 0 });
+        cell.sum += 0;
         cell.n += 1;
         counted = true;
-        if (rounds[i] > maxRound) maxRound = rounds[i];
       }
     });
+
     if (counted) used += 1;
   });
+
+  const effectiveMaxRound = Math.max(3, maxRound);
   const series = Object.keys(acc).sort().map((role) => {
     const points = [];
-    for (let r = 2; r <= maxRound; r += 1) {
-      const cell = acc[role][r];
-      points.push({ round: r, value: cell ? cell.sum / cell.n : null });
+    for (let r = 2; r <= effectiveMaxRound; r += 1) {
+      const cell = acc[role] ? acc[role][r] : null;
+      points.push({ round: r, value: cell ? Math.round(cell.sum / cell.n) : 0 });
     }
     return { role, points };
   });
-  return { sessionsUsed: used, maxRound, series };
+
+  return { sessionsUsed: used, maxRound: effectiveMaxRound, series };
 }
 
 /**

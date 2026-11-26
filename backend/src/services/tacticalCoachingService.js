@@ -62,11 +62,12 @@ function getParticipantKey(message) {
   return normalize(message.sender_role || message.sender_name || 'unknown');
 }
 
-function analyseParticipant(agent, messages, allMessages, status) {
+function analyseParticipant(agent, messages, allMessages, status, simulation) {
   const role = agent.role || 'Negotiation participant';
   const name = agent.name || role;
   const personality = agent.personality || 'Not specified';
   const roleType = getRoleType(role, name);
+  const scenario = normalize(simulation?.scenario_id || simulation?.scenarioId || '');
 
   const ownMessages = messages;
   const offers = ownMessages
@@ -74,6 +75,7 @@ function analyseParticipant(agent, messages, allMessages, status) {
       value: validOffer(message),
       round: Number(message.round_number || 0),
       message: message.message || '',
+      terms: message.terms || {},
     }))
     .filter((item) => item.value !== null);
 
@@ -95,7 +97,7 @@ function analyseParticipant(agent, messages, allMessages, status) {
     }
   }
 
-    // Detect personality-specific negotiation behaviour.
+  // Detect personality-specific negotiation behaviour.
   if (roleType === 'seller') {
     for (let i = 1; i < offers.length; i += 1) {
       const previous = offers[i - 1].value;
@@ -150,7 +152,7 @@ function analyseParticipant(agent, messages, allMessages, status) {
 
   // Compare opening anchors when both participants have numerical offers.
   const firstOwnOffer = offers[0]?.value;
-    const ownParticipantKeys = new Set(ownMessages.map(getParticipantKey));
+  const ownParticipantKeys = new Set(ownMessages.map(getParticipantKey));
 
   const otherOffers = allMessages.filter(
     (message) =>
@@ -190,6 +192,49 @@ function analyseParticipant(agent, messages, allMessages, status) {
     );
   }
 
+  // Deep Data-Driven Scenario Analyses for Practice Mode (Exact numbers, percentages, and terms)
+  if (scenario.includes('vendor') || roleType === 'buyer' || roleType === 'seller') {
+    if (roleType === 'buyer' && firstOwnOffer && firstOwnOffer > 105000) {
+      improvements.push(
+        `Anchor Conservatism: Your opening offer of ₹${Number(firstOwnOffer).toLocaleString()} was only ₹${(115000 - firstOwnOffer).toLocaleString()} below the ₹115,000 reservation ceiling. Anchoring closer to the ₹90,000 target preserves more bargaining surplus.`
+      );
+    }
+    const hasPaymentTerms = ownMessages.some((m) =>
+      /net-60|payment terms|payment_terms|volume|warranty|delivery|sla/i.test(m.message || JSON.stringify(m.terms || {}))
+    );
+    if (!hasPaymentTerms && offers.length >= 2) {
+      improvements.push(
+        `Single-Dimension Haggling: All ${offers.length} proposals focused solely on unit price. Introducing Net-60 payment terms, order volume thresholds, or service-tier commitments helps break pricing impasses.`
+      );
+    }
+  } else if (scenario.includes('job') || roleType === 'candidate' || roleType === 'recruiter') {
+    if (roleType === 'candidate' && firstOwnOffer && firstOwnOffer < 165000) {
+      improvements.push(
+        `Initial Salary Anchor: Your opening salary bid of ₹${Number(firstOwnOffer).toLocaleString()} was near your baseline. In technology compensation bargaining, anchoring at ₹175,000–₹185,000 preserves headroom for reciprocal recruiter concessions.`
+      );
+    }
+    const hasEquityOrBonus = ownMessages.some((m) =>
+      /equity|stock|options|signing bonus|bonus|remote|flexib|vacation|sign-on|appraisal/i.test(m.message || JSON.stringify(m.terms || {}))
+    );
+    if (!hasEquityOrBonus && offers.length >= 2) {
+      improvements.push(
+        `Single-Dimension Focus: All ${offers.length} proposals centered purely on base salary. When recruiters face fixed salary bands, negotiate signing bonuses, equity acceleration, or remote days to elevate overall package value.`
+      );
+    }
+  } else if (scenario.includes('project') || scenario.includes('budget') || /engineering|marketing|product/i.test(role)) {
+    if (firstOwnOffer && firstOwnOffer > 420000) {
+      improvements.push(
+        `High Initial Allocation Demand: You requested ₹${Number(firstOwnOffer).toLocaleString()} (${Math.round(firstOwnOffer / 10000)}% of the ₹1.0M budget). In multi-department allocations, requesting above 40% without explicit cross-team ROI justification prompts other leads to form defensive coalitions.`
+      );
+    }
+    const hasMultiDeptAlloc = ownMessages.some((m) => m.terms && (m.terms.marketing || m.terms.product || m.terms.engineering));
+    if (!hasMultiDeptAlloc && offers.length >= 2) {
+      improvements.push(
+        'Siloed Budget Demands: Your proposals focused exclusively on your own department share. Proposing a complete 3-department split (Engineering, Marketing, Product AI) summing to ₹1,000,000 drives consensus faster.'
+      );
+    }
+  }
+
   if (strengths.length === 0) {
     strengths.push(
       'Participated in the negotiation. Review the transcript to identify opportunities for clearer proposals and stronger preparation.'
@@ -197,15 +242,41 @@ function analyseParticipant(agent, messages, allMessages, status) {
   }
 
   if (improvements.length === 0) {
-    improvements.push(
-      'No major issue was detected by the available numerical checks. Continue using evidence-based and reciprocal negotiation proposals.'
-    );
+    if (roleType === 'candidate') {
+      improvements.push(
+        'Anchor Optimization: Establish an initial compensation anchor 15–20% above your target to preserve bargaining headroom before making concessions.',
+        'Multi-Issue Leverage: Pair salary adjustments with non-monetary terms such as performance bonuses, equity acceleration, or additional remote flexibility.'
+      );
+    } else if (roleType === 'recruiter') {
+      improvements.push(
+        'Total Compensation Framing: Emphasize total annualized rewards (bonus, equity, and healthcare benefits) to navigate candidate base salary resistance.',
+        'Concession Pacing: Make incremental, tapering counteroffers rather than flat jumps to signal that budget thresholds are being approached.'
+      );
+    } else if (roleType === 'buyer') {
+      improvements.push(
+        'Term-Based Concessions: Require supplier payment terms (Net-60) or delivery commitments whenever conceding upward on unit purchase price.',
+        'Benchmarking Leverage: Challenge vendor quotes with objective market comparison data before conceding toward your reservation limit.'
+      );
+    } else if (roleType === 'seller') {
+      improvements.push(
+        'Value Justification: Defend pricing with SLA reliability, support guarantees, and delivery turnaround before offering unit price discounts.',
+        'Reciprocal Demands: Tie any price reduction directly to reciprocal contractual commitments such as larger order quantities or earlier payment.'
+      );
+    } else {
+      improvements.push(
+        'Strategic Concession Tapering: Gradually decrease concession sizes across rounds to signal strong reservation boundaries.',
+        'Multi-Issue Packaging: Avoid single-issue haggling; propose package deals that trade secondary preferences for primary objectives.'
+      );
+    }
   }
 
+  const isHuman = Boolean(agent.is_human || agent.personality === 'Human');
+
   return {
-    name,
+    name: isHuman ? `${name} (You)` : name,
     role,
-    personality,
+    display_role: isHuman ? `${role} (You)` : role,
+    is_human: isHuman,
     strengths,
     areas_for_improvement: improvements,
     actionable_takeaways: ROLE_GUIDANCE[roleType] || ROLE_GUIDANCE.general,
@@ -237,7 +308,7 @@ function generateTacticalCoaching(simulation) {
       normalize(message.sender_name) === normalize(agent.name)
     );
 
-    return analyseParticipant(agent, roleMessages, messages, simulation.status);
+    return analyseParticipant(agent, roleMessages, messages, simulation.status, simulation);
   });
 
   // Include any transcript participant not represented in the agents array.
@@ -260,7 +331,7 @@ function generateTacticalCoaching(simulation) {
     );
 
     participants.push(
-      analyseParticipant(agent, roleMessages, messages, simulation.status)
+      analyseParticipant(agent, roleMessages, messages, simulation.status, simulation)
     );
     knownKeys.add(key);
   }

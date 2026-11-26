@@ -20,6 +20,8 @@ import {
   Search,
   Filter,
   RefreshCw,
+  Target,
+  Award,
   ChevronRight,
   Copy,
   Check,
@@ -35,7 +37,10 @@ import {
   listSimulations,
   getSimulationState,
   getTacticalRecommendations,
+  getSimulationSummary,
+  generateClientFallbackSummary,
 } from '../services/simulationApi';
+import { getStoredPracticeSessions } from './NegotiationAnalytics';
 import SentimentJourneyTimeline from '../components/SentimentJourneyTimeline';
 import './HistoryReports.css';
 
@@ -151,7 +156,49 @@ function isLeftInBetween(sim) {
   return true;
 }
 
-export default function HistoryReports() {
+// Error Boundary to prevent full unmounting and catch render issues gracefully
+class ReportErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('[ReportErrorBoundary] Caught render error in report:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ maxWidth: '900px', margin: '40px auto', padding: '30px', background: '#fef2f2', border: '1px solid #f87171', borderRadius: '16px', color: '#991b1b', fontFamily: 'Inter, sans-serif' }}>
+          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.4rem', fontWeight: 800 }}>Simulation Report View</h2>
+          <p style={{ margin: '0 0 16px 0', color: '#7f1d1d' }}>A rendering exception was caught while formatting this report record:</p>
+          <pre style={{ background: '#ffffff', padding: '16px', borderRadius: '8px', border: '1px solid #fecaca', overflowX: 'auto', fontSize: '12px', lineHeight: '1.5' }}>
+            {this.state.error?.toString()}
+          </pre>
+          <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+            <button
+              onClick={() => { window.location.href = '/history'; }}
+              style={{ padding: '10px 20px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              ← Back to History List
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ padding: '10px 20px', background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              ↻ Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function HistoryReportsContent() {
   const navigate = useNavigate();
   const { simulationId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -168,6 +215,8 @@ export default function HistoryReports() {
   const [coachingData, setCoachingData] = useState(null);
   const [coachingLoading, setCoachingLoading] = useState(false);
   const [coachingError, setCoachingError] = useState('');
+  const [postSummary, setPostSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -178,7 +227,7 @@ export default function HistoryReports() {
 
   const reportPrintRef = useRef(null);
 
-  // Load Simulations List: strictly Vendor, Job, and Project scenarios for the active account
+  // Load Simulations List: combines both Simulation Mode (Autonomous) and Practice Mode sessions
   const fetchSimulations = async () => {
     setLoading(true);
     setError(null);
@@ -186,12 +235,12 @@ export default function HistoryReports() {
       const userEmail = currentUser?.email || null;
       const userId = currentUser?.uid || null;
       const liveList = await listSimulations(userEmail, userId);
+
+      // 1. Simulation Mode Sessions (strictly matching NegotiationAnalytics Simulation Mode: 32 sessions)
+      let simulationSims = [];
       if (liveList && liveList.length > 0) {
-        // Defensive user scoping: ensures user only sees their own simulations
         const userSims = liveList.filter(s => {
-          if (!currentUser?.email && !currentUser?.uid) {
-            return true;
-          }
+          if (!currentUser?.email && !currentUser?.uid) return true;
           if (currentUser?.email && s.user_email) {
             return s.user_email.toLowerCase() === currentUser.email.toLowerCase();
           }
@@ -199,49 +248,62 @@ export default function HistoryReports() {
             return s.user_id === currentUser.uid;
           }
           if (!s.user_email && !s.user_id) {
-            // Unattributed legacy records belong only to primary author
             return currentUser?.email?.toLowerCase() === 'shubhayyadav84@gmail.com';
           }
           return false;
         });
 
-        // Filter strictly to the 3 official scenarios: vendor-pricing, job-offer, project-budget
-        const officialSims = userSims.filter(s => {
+        simulationSims = userSims.filter(s => {
+          const isPractice =
+            s.mode === 'practice' ||
+            s.is_practice === true ||
+            (s.id && s.id.includes('practice')) ||
+            (Array.isArray(s.agents) && s.agents.some((a) => a.personality === 'Human' || a.is_human === true));
+          if (isPractice) return false;
+
           const sid = (s.scenario_id || '').toLowerCase();
           const title = (s.scenario_title || '').toLowerCase();
-
-          // Reject any legacy SaaS or Lease mock titles
-          if (title.includes('saas') || title.includes('lease') || title.includes('office space')) {
-            return false;
-          }
+          if (title.includes('saas') || title.includes('lease') || title.includes('office space')) return false;
 
           const isVendor = sid === 'vendor-pricing' || title.includes('vendor');
           const isJob = sid === 'job-offer' || title.includes('job');
           const isProject = sid === 'project-budget' || title.includes('project');
-
           return isVendor || isJob || isProject;
         }).map(s => {
-          // Standardize clean title if needed
           const sid = (s.scenario_id || '').toLowerCase();
           const title = (s.scenario_title || '').toLowerCase();
           let cleanTitle = s.scenario_title;
-          if (sid === 'vendor-pricing' || title.includes('vendor')) {
-            cleanTitle = 'Vendor Pricing Negotiation';
-          } else if (sid === 'job-offer' || title.includes('job')) {
-            cleanTitle = 'Job Offer Negotiation';
-          } else if (sid === 'project-budget' || title.includes('project')) {
-            cleanTitle = 'Project Budget Allocation';
-          }
-          return { ...s, scenario_title: cleanTitle };
+          if (sid === 'vendor-pricing' || title.includes('vendor')) cleanTitle = 'Vendor Pricing Negotiation';
+          else if (sid === 'job-offer' || title.includes('job')) cleanTitle = 'Job Offer Negotiation';
+          else if (sid === 'project-budget' || title.includes('project')) cleanTitle = 'Project Budget Allocation';
+          return { ...s, scenario_title: cleanTitle, is_practice: false, mode: 'simulation' };
         });
-
-        setSimulations(officialSims);
-      } else {
-        setSimulations([]);
       }
+
+      // 2. Practice Mode Sessions (strictly matching NegotiationAnalytics Practice Mode: 47 sessions)
+      const storedPractice = getStoredPracticeSessions() || [];
+      const practiceSims = storedPractice.map(p => {
+        const sid = (p.scenario_id || '').toLowerCase();
+        const title = (p.scenario_title || '').toLowerCase();
+        let cleanTitle = p.scenario_title;
+        if (sid === 'vendor-pricing' || title.includes('vendor')) cleanTitle = 'Vendor Pricing Negotiation';
+        else if (sid === 'job-offer' || title.includes('job')) cleanTitle = 'Job Offer Negotiation';
+        else if (sid === 'project-budget' || title.includes('project')) cleanTitle = 'Project Budget Allocation';
+        return {
+          ...p,
+          scenario_title: cleanTitle,
+          is_practice: true,
+          mode: 'practice',
+        };
+      });
+
+      // 3. Combined Sessions: Total count addition (Simulation Mode + Practice Mode)
+      setSimulations([...simulationSims, ...practiceSims]);
     } catch (err) {
       console.warn('Failed to fetch simulations:', err);
-      setSimulations([]);
+      const storedPractice = getStoredPracticeSessions() || [];
+      const practiceSims = storedPractice.map(p => ({ ...p, is_practice: true, mode: 'practice' }));
+      setSimulations(practiceSims);
     } finally {
       setLoading(false);
     }
@@ -270,6 +332,34 @@ export default function HistoryReports() {
         return;
       }
 
+      // If it's a practice session with offers but no messages, synthesize messages so report loads smoothly
+      if (foundInState && (foundInState.is_practice || foundInState.mode === 'practice' || String(foundInState.id).startsWith('practice-seed'))) {
+        const syntheticMessages = (foundInState.messages && foundInState.messages.length > 0)
+          ? foundInState.messages
+          : (foundInState.offers || []).map((o, idx) => ({
+              id: `msg_sync_${idx}`,
+              round_number: o.round_number || 1,
+              sender_role: o.agent_role,
+              sender_name: o.agent_role,
+              sender_type: o.is_human || /buyer|candidate|engineering/i.test(o.agent_role) ? 'HUMAN' : 'AGENT',
+              offer_value: o.offer_value,
+              action: idx === (foundInState.offers || []).length - 1 && (foundInState.status === 'AGREEMENT_REACHED' || foundInState.status === 'COMPLETED') ? 'ACCEPT' : 'COUNTER_OFFER',
+              message: `Proposal submitted at ₹${Number(o.offer_value).toLocaleString()}.`,
+            }));
+
+        const hydrated = {
+          ...foundInState,
+          messages: syntheticMessages,
+          agents: foundInState.agents && foundInState.agents.length > 0 ? foundInState.agents : [
+            { role: foundInState.userRole || 'Human Participant', name: 'You', is_human: true, personality: 'Human' },
+            { role: foundInState.opponentRole || 'AI Opponent', name: foundInState.opponentRole || 'AI', personality: foundInState.opponentPersonality || 'Collaborative' },
+          ],
+        };
+        setSelectedSim(hydrated);
+        setLoadingDetail(false);
+        return;
+      }
+
       // Otherwise fetch from backend API
       try {
         const fullSim = await getSimulationState(targetId);
@@ -280,6 +370,7 @@ export default function HistoryReports() {
         }
       } catch (err) {
         console.warn('Failed to load full simulation details:', err);
+        if (foundInState) setSelectedSim(foundInState);
       } finally {
         setLoadingDetail(false);
       }
@@ -328,6 +419,81 @@ export default function HistoryReports() {
       cancelled = true;
     };
   }, [selectedSim?.id]);
+
+  // Load Post-Interaction Executive Summary (Member 1 Feature)
+  useEffect(() => {
+    if (!selectedSim?.id) {
+      setPostSummary(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSummary = async () => {
+      setSummaryLoading(true);
+      try {
+        if (selectedSim.post_summary) {
+          if (!cancelled) setPostSummary(selectedSim.post_summary);
+          return;
+        }
+
+        const data = await getSimulationSummary(selectedSim.id);
+        if (!cancelled) {
+          setPostSummary(data || generateClientFallbackSummary(selectedSim));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPostSummary(generateClientFallbackSummary(selectedSim));
+        }
+      } finally {
+        if (!cancelled) {
+          setSummaryLoading(false);
+        }
+      }
+    };
+
+    loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSim?.id]);
+
+  // Helper to determine if selected session is Practice Mode
+  const isPracticeMode = useMemo(() => {
+    if (!selectedSim) return false;
+    return Boolean(
+      selectedSim.simulation_mode === 'PRACTICE' ||
+      selectedSim.mode === 'practice' ||
+      selectedSim.mode === 'PRACTICE' ||
+      selectedSim.is_practice === true ||
+      (selectedSim.id && String(selectedSim.id).includes('practice')) ||
+      getSimulationModeLabel(selectedSim).toLowerCase().includes('practice') ||
+      (Array.isArray(selectedSim.agents) && selectedSim.agents.some((a) => a.is_human || a.personality === 'Human' || /human|you/i.test(a.name)))
+    );
+  }, [selectedSim]);
+
+  // Derived effective summary (loaded summary or instant client fallback)
+  const effectiveSummary = useMemo(() => {
+    if (!selectedSim) return null;
+    try {
+      const fallback = generateClientFallbackSummary(selectedSim) || {};
+      const base = postSummary || selectedSim.post_summary || {};
+      return {
+        ...fallback,
+        ...base,
+        resolution_quality: base.resolution_quality || fallback.resolution_quality || null,
+        strategic_agent_critique: base.strategic_agent_critique || fallback.strategic_agent_critique || null,
+        outcome_analysis: {
+          ...(fallback.outcome_analysis || {}),
+          ...(base.outcome_analysis || {}),
+        },
+      };
+    } catch (err) {
+      console.warn('Failed to compute effective summary:', err);
+      return postSummary || selectedSim.post_summary || null;
+    }
+  }, [selectedSim, postSummary]);
   // Handle selecting a simulation to view full report
   const handleSelectSimulation = (sim) => {
     setSearchParams({ id: sim.id });
@@ -407,7 +573,7 @@ export default function HistoryReports() {
     });
   }, [simulations, searchQuery, filterMode, filterOutcome, sortBy]);
 
-  // Aggregate statistics across completed and left-in-between simulations
+  // Aggregate statistics across completed and left-in-between simulations (Combines Simulation + Practice)
   const stats = useMemo(() => {
     const validSims = simulations.filter(s =>
       s.status === 'COMPLETED' ||
@@ -423,31 +589,53 @@ export default function HistoryReports() {
     const leftInBetween = validSims.filter(s => isLeftInBetween(s)).length;
     const agreementRate = total > 0 ? Math.round((agreements / total) * 100) : 0;
     const avgRounds = total > 0
-      ? (validSims.reduce((acc, curr) => acc + (curr.current_round || 1), 0) / total).toFixed(1)
+      ? (validSims.reduce((acc, curr) => acc + (curr.current_round || curr.rounds || 1), 0) / total).toFixed(1)
       : '0.0';
 
-    return { total, agreements, deadlocks, leftInBetween, agreementRate, avgRounds };
+    const simulationCount = validSims.filter(s => !s.is_practice && s.mode !== 'practice').length;
+    const practiceCount = validSims.filter(s => s.is_practice || s.mode === 'practice').length;
+
+    return { total, agreements, deadlocks, leftInBetween, agreementRate, avgRounds, simulationCount, practiceCount };
   }, [simulations]);
 
   // Offer points for chart rendering
   const chartOffers = useMemo(() => {
     if (!selectedSim) return [];
     const messages = selectedSim.messages || [];
+    const agents = selectedSim.agents || [];
     const points = [];
 
+    const agent0Name = (agents[0]?.name || '').toLowerCase();
+    const agent0Role = (agents[0]?.role || '').toLowerCase();
+
     messages.forEach(m => {
-      if (m.offer_value !== null && m.offer_value !== undefined && m.offer_value > 0) {
-        const isVendor = m.sender_role?.toLowerCase().includes('vendor') ||
-          m.sender_role?.toLowerCase().includes('seller') ||
-          m.sender_role?.toLowerCase().includes('provider') ||
-          m.sender_role?.toLowerCase().includes('recruiter') ||
-          m.sender_role?.toLowerCase().includes('landlord');
+      let val = Number(m.offer_value);
+      if ((!Number.isFinite(val) || val <= 0) && m.terms) {
+        val = Number(m.terms.engineering || m.terms.marketing || m.terms.product || m.terms.salary || m.terms.price || 0);
+      }
+      if (Number.isFinite(val) && val > 0) {
+        const sRole = (m.sender_role || '').toLowerCase();
+        const sName = (m.sender_name || '').toLowerCase();
+
+        const isVendorExplicit = sRole.includes('vendor') ||
+          sRole.includes('seller') ||
+          sRole.includes('provider') ||
+          sRole.includes('recruiter') ||
+          sRole.includes('hiring') ||
+          sRole.includes('landlord');
+
+        let isSide1 = isVendorExplicit;
+        if (!isSide1 && agents.length >= 2) {
+          if (sName.includes(agent0Name) || sRole.includes(agent0Role)) {
+            isSide1 = true;
+          }
+        }
 
         points.push({
           round: m.round_number || 1,
           senderName: m.sender_name,
-          role: isVendor ? 'Vendor' : 'Buyer',
-          offer: Number(m.offer_value),
+          role: isSide1 ? 'Vendor' : 'Buyer',
+          offer: val,
           action: m.action,
         });
       }
@@ -593,72 +781,6 @@ export default function HistoryReports() {
             </div>
           </div>
 
-          {/* Practice Mode Coaching Notice */}
-          {getSimulationModeLabel(selectedSim).includes('Practice') && (
-            <div className="practice-mode-dev-notice-banner">
-              <Sparkles size={18} className="practice-dev-notice-icon" />
-              <div className="practice-dev-notice-text">
-                <strong>Personalized Coaching:</strong> This report includes
-                participant-specific strengths, areas for improvement, and
-                actionable recommendations based on the negotiation session.
-              </div>
-            </div>
-
-          )}
-
-          {/* Tactical Coaching Recommendations */}
-          <section className="report-coaching-section">
-            <div className="report-coaching-heading">
-              <Sparkles size={20} />
-              <h2>Personalized Tactical Coaching</h2>
-            </div>
-
-            {coachingLoading && (
-              <p>Loading coaching recommendations...</p>
-            )}
-
-            {coachingError && (
-              <p className="coaching-error">{coachingError}</p>
-            )}
-
-            {!coachingLoading && coachingData?.participants?.map((participant, index) => (
-              <div className="coaching-participant-card" key={`${participant.name}-${index}`}>
-                <div className="coaching-participant-meta">
-                  <h3>{participant.name}</h3>
-                  <span>{participant.role} · {participant.personality}</span>
-                </div>
-
-                <h4>Strengths</h4>
-                <ul>
-                  {(participant.strengths || []).map((item, i) => (
-                    <li key={`strength-${i}`}>{item}</li>
-                  ))}
-                </ul>
-
-                <h4>Areas for Improvement</h4>
-                <ul>
-                  {(participant.areas_for_improvement || []).map((item, i) => (
-                    <li key={`improvement-${i}`}>{item}</li>
-                  ))}
-                </ul>
-
-                <h4>Actionable Recommendations</h4>
-                <ul>
-                  {(participant.actionable_takeaways || []).map((item, i) => (
-                    <li key={`takeaway-${i}`}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-
-            {!coachingLoading && coachingData?.deadlock_recovery && (
-              <div className="coaching-deadlock-notice">
-                <strong>Deadlock Recovery Insight</strong>
-                <p>{coachingData.deadlock_recovery}</p>
-              </div>
-            )}
-          </section>
-
           {/* Report Header Card */}
 
           <div className="report-header-card">
@@ -743,19 +865,434 @@ export default function HistoryReports() {
 
             <div className="report-kpi-card">
               <div className="kpi-icon-wrap kpi-icon-vendor">
-                <Building2 size={20} />
+                {isPracticeMode ? <Award size={20} /> : <Building2 size={20} />}
               </div>
               <div className="kpi-info">
-                <span className="kpi-title">Vendor Stance</span>
+                <span className="kpi-title">{isPracticeMode ? 'Resolution Quality' : 'Vendor Stance'}</span>
                 <span className="kpi-value">
-                  {getParticipants(selectedSim).vendor.personality || 'Analytical'}
+                  {isPracticeMode
+                    ? `${effectiveSummary?.resolution_quality?.overall_score || 85}/100`
+                    : (getParticipants(selectedSim).vendor.personality || 'Analytical')}
                 </span>
                 <span className="kpi-subtext text-truncate">
-                  {getParticipants(selectedSim).vendor.stance || 'Final round position'}
+                  {isPracticeMode
+                    ? (effectiveSummary?.resolution_quality?.badge || 'Evaluation Completed')
+                    : (getParticipants(selectedSim).vendor.stance || 'Final round position')}
                 </span>
               </div>
             </div>
           </div>
+
+          {/* Post-Interaction Executive Summary Agent (Milestone 4 - Member 1 Feature) */}
+          {effectiveSummary && (
+            <div className="report-summary-card" style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '16px',
+              padding: '24px',
+              marginBottom: '24px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ background: '#eff6ff', color: '#2563eb', padding: '8px', borderRadius: '10px' }}>
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Post-Interaction Executive Summary</h2>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      Generated by Autonomous Summary Agent Engine • {effectiveSummary.mode || (isPracticeMode ? 'Practice Mode (Human vs AI)' : 'Simulation Mode (AI vs AI)')}
+                    </span>
+                  </div>
+                </div>
+                <span style={{
+                  background: effectiveSummary.outcome === 'AGREEMENT_REACHED' ? '#dcfce7' : '#fee2e2',
+                  color: effectiveSummary.outcome === 'AGREEMENT_REACHED' ? '#15803d' : '#b91c1c',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  padding: '4px 10px',
+                  borderRadius: '20px'
+                }}>
+                  {effectiveSummary.outcome}
+                </span>
+              </div>
+
+              {/* Participant Roles & Opening-to-Closing Offers Comparison */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', fontSize: '0.85rem' }}>
+                  {isPracticeMode ? (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                          👤 Human Participant (You)
+                        </span>
+                        <span style={{ color: '#475569' }}>
+                          Role: <strong>{selectedSim.user_role || (getParticipants(selectedSim).buyer?.is_human ? getParticipants(selectedSim).buyer?.role : (getParticipants(selectedSim).buyer?.role || getParticipants(selectedSim).vendor?.role))}</strong>
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ background: '#f5f3ff', color: '#6d28d9', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                          🤖 AI Counterpart
+                        </span>
+                        <span style={{ color: '#475569' }}>
+                          Role: <strong>{getParticipants(selectedSim).vendor?.is_human ? getParticipants(selectedSim).buyer?.name : getParticipants(selectedSim).vendor?.name}</strong> ({getParticipants(selectedSim).vendor?.personality || 'Collaborative'})
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ background: '#f5f3ff', color: '#6d28d9', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                          🤖 Agent 1
+                        </span>
+                        <span style={{ color: '#475569' }}>
+                          <strong>{getParticipants(selectedSim).vendor?.name}</strong> ({getParticipants(selectedSim).vendor?.role}, {getParticipants(selectedSim).vendor?.personality || 'Analytical'})
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ background: '#ecfdf5', color: '#047857', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                          🤖 Agent 2
+                        </span>
+                        <span style={{ color: '#475569' }}>
+                          <strong>{getParticipants(selectedSim).buyer?.name}</strong> ({getParticipants(selectedSim).buyer?.role}, {getParticipants(selectedSim).buyer?.personality || 'Collaborative'})
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Executive Narrative */}
+              <div style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: '12px', borderLeft: '4px solid #3b82f6', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e3a8a', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Executive Narrative</h3>
+                <p style={{ margin: 0, fontSize: '0.92rem', color: '#334155', lineHeight: '1.6' }}>{effectiveSummary.executive_narrative}</p>
+              </div>
+
+              {/* Opening Bids & Concession Audit Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                {/* Opening Bids */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Target size={15} color="#2563eb" />
+                    <span>Opening Anchor Positions</span>
+                  </h4>
+                  {effectiveSummary.opening_bids?.length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.85rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {effectiveSummary.opening_bids.map((b, idx) => (
+                        <li key={idx}>
+                          <strong>{b.agent_name} ({b.agent_role}):</strong> Anchor offer {formatCurrency(b.offer_value, selectedSim.currency)} in Round {b.round_number}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>Opening positions recorded at initial turn.</p>
+                  )}
+                </div>
+
+                {/* Practice Insights or Concession Milestones */}
+                {effectiveSummary.practice_insights ? (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Award size={15} color="#8b5cf6" />
+                      <span>Human Bargaining Trajectory</span>
+                    </h4>
+                    <div style={{ fontSize: '0.85rem', color: '#334155', marginBottom: '8px' }}>
+                      <strong>Assessed Style:</strong> <span style={{ color: '#7c3aed', fontWeight: 600 }}>{effectiveSummary.practice_insights.style_assessment}</span>
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.82rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {effectiveSummary.practice_insights.pivotal_decision_points?.map((p, idx) => (
+                        <li key={idx}>
+                          <strong>Round {p.round} ({p.title}):</strong> {p.impact}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <TrendingUp size={15} color="#10b981" />
+                      <span>Key Concession Milestones</span>
+                    </h4>
+                    {effectiveSummary.concession_milestones?.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.82rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {effectiveSummary.concession_milestones.slice(0, 3).map((m, idx) => (
+                          <li key={idx}>
+                            <strong>Round {m.round} ({m.agent_name}):</strong> {m.direction} by {formatCurrency(m.concession_amount, selectedSim.currency)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>Consistent positioning maintained throughout rounds.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Negotiation Resolution Quality Score (Milestone 4 - Strictly Practice Mode Only) */}
+          {isPracticeMode && effectiveSummary?.resolution_quality && (
+            <div className="report-resolution-quality-card">
+              <div className="quality-score-header">
+                <div className="quality-header-title-wrap">
+                  <div className="quality-header-icon">
+                    <Award size={22} />
+                  </div>
+                  <div>
+                    <h2 className="quality-header-title">Negotiation Resolution Quality Score</h2>
+                    <span className="quality-header-subtitle">
+                      Practice Mode Multi-Factor Evaluation (Goal Achievement 30% · Agreement Status 25% · Negotiation Effectiveness 25% · Concession Management 20%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="quality-score-badge-wrap">
+                  <span className="quality-score-val">{effectiveSummary.resolution_quality.overall_score}</span>
+                  <span className="quality-score-max">/100</span>
+                  <span className={`quality-badge-pill ${
+                    effectiveSummary.resolution_quality.overall_score >= 85
+                      ? 'quality-badge-optimal'
+                      : effectiveSummary.resolution_quality.overall_score >= 70
+                      ? 'quality-badge-proficient'
+                      : effectiveSummary.resolution_quality.overall_score >= 50
+                      ? 'quality-badge-developing'
+                      : 'quality-badge-impasse'
+                  }`}>
+                    {effectiveSummary.resolution_quality.badge}
+                  </span>
+                </div>
+              </div>
+
+              {/* 4 Factor Breakdown */}
+              <div className="quality-factors-grid">
+                {(() => {
+                  const rawFactors = effectiveSummary.resolution_quality.factors;
+                  const factorList = Array.isArray(rawFactors)
+                    ? rawFactors
+                    : Object.entries(rawFactors || {}).map(([key, f]) => ({
+                        name: f.label || f.name || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                        weight: f.weight || 25,
+                        score: f.score || 0,
+                        weighted_score: f.weighted_score ?? Math.round(((f.score || 0) * (f.weight || 25)) / 100),
+                        description: f.description || `Evaluation of ${f.label || key} performance.`,
+                      }));
+
+                  return factorList.map((f, idx) => {
+                    const fillClass = idx === 0 ? 'quality-fill-emerald' : idx === 1 ? 'quality-fill-indigo' : idx === 2 ? 'quality-fill-blue' : 'quality-fill-purple';
+                    return (
+                      <div key={idx} className="quality-factor-card">
+                        <div className="quality-factor-header">
+                          <span className="quality-factor-title">{f.name}</span>
+                          <span className="quality-factor-weight">{f.weight}% Weight</span>
+                        </div>
+                        <div className="quality-factor-score-wrap">
+                          <span className="quality-factor-score">{f.score}/100</span>
+                          <span className="quality-factor-points">+{f.weighted_score} pts</span>
+                        </div>
+                        <div className="quality-progress-track">
+                          <div className={`quality-progress-fill ${fillClass}`} style={{ width: `${Math.min(100, Math.max(0, f.score || 0))}%` }} />
+                        </div>
+                        <p className="quality-factor-desc">{f.description}</p>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Scoring Explanation */}
+              <div className="quality-explanation-box">
+                <h4>Scoring Audit & Assessment Rationale</h4>
+                <p>{effectiveSummary.resolution_quality.explanation}</p>
+              </div>
+
+              {/* Strengths & Weaknesses Grid */}
+              <div className="quality-insights-grid">
+                <div className="quality-strengths-box">
+                  <h4>
+                    <CheckCircle2 size={16} />
+                    <span>Factors Enhancing Resolution Score</span>
+                  </h4>
+                  <ul>
+                    {(() => {
+                      const raw = effectiveSummary.resolution_quality.strengths;
+                      const list = Array.isArray(raw) ? raw : (raw ? Object.values(raw) : []);
+                      return list.map((str, sIdx) => (
+                        <li key={sIdx}>{String(str)}</li>
+                      ));
+                    })()}
+                  </ul>
+                </div>
+                <div className="quality-weaknesses-box">
+                  <h4>
+                    <AlertTriangle size={16} />
+                    <span>Factors Limiting Resolution Score</span>
+                  </h4>
+                  <ul>
+                    {(() => {
+                      const raw = effectiveSummary.resolution_quality.weaknesses;
+                      const list = Array.isArray(raw) ? raw : (raw ? Object.values(raw) : []);
+                      return list.map((w, wIdx) => (
+                        <li key={wIdx}>{String(w)}</li>
+                      ));
+                    })()}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Strategic Comparative Analysis (Milestone 4 - Strictly Simulation Mode Only, Zero Numerical Scores) */}
+          {!isPracticeMode && effectiveSummary?.strategic_agent_critique && (
+            <div className="report-strategic-critique-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '16px', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ background: '#ede9fe', color: '#7c3aed', padding: '10px', borderRadius: '12px' }}>
+                  <Sparkles size={22} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                    Strategic Comparative Analysis: Autonomous Agent Decision Quality
+                  </h2>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                    Qualitative comparative evaluation of autonomous agent strategic choices, anchoring firmness, and concession pacing.
+                  </span>
+                </div>
+              </div>
+
+              {/* Better Agent Feature Banner */}
+              <div className="critique-winner-banner">
+                <div className="critique-winner-title">Comparative Strategic Advantage</div>
+                <div className="critique-winner-name">
+                  🏆 Top Strategist: {effectiveSummary.strategic_agent_critique.better_agent}
+                </div>
+                <p className="critique-rationale">
+                  {effectiveSummary.strategic_agent_critique.rationale}
+                </p>
+              </div>
+
+              {/* Qualitative Dimensions Grid */}
+              <div className="critique-dimensions-grid">
+                {(() => {
+                  const raw = effectiveSummary.strategic_agent_critique.comparative_dimensions;
+                  const list = Array.isArray(raw) ? raw : (raw ? Object.values(raw) : []);
+                  return list.map((dim, dIdx) => (
+                    <div key={dIdx} className="critique-dim-card">
+                      <h4 className="critique-dim-title">
+                        <Target size={16} color="#7c3aed" />
+                        <span>{dim.dimension}</span>
+                      </h4>
+                      <div className="critique-dim-evals">
+                        <div className="critique-eval-row">
+                          <strong>Agent 1:</strong> {dim.agent1_eval}
+                        </div>
+                        <div className="critique-eval-row">
+                          <strong>Agent 2:</strong> {dim.agent2_eval}
+                        </div>
+                      </div>
+                      <div className="critique-dim-advantage">
+                        Strategic Advantage: {dim.advantage}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Final Negotiation Outcome Analysis (Milestone 4 - Both Modes) */}
+          {effectiveSummary?.outcome_analysis && (
+            <div className="report-outcome-analysis-card">
+              <div className="outcome-header">
+                <div className="outcome-title-wrap">
+                  <div className="outcome-icon">
+                    <ShieldCheck size={22} />
+                  </div>
+                  <div>
+                    <h2 className="outcome-title">Final Negotiation Outcome & Settlement Analysis</h2>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                      Post-session contract evaluation and goal achievement audit
+                    </span>
+                  </div>
+                </div>
+
+                <span className={`outcome-pill ${
+                  String(effectiveSummary.outcome_analysis.outcome_type || '').includes('Agreement')
+                    ? 'outcome-pill-success'
+                    : String(effectiveSummary.outcome_analysis.outcome_type || '').includes('Failed')
+                    ? 'outcome-pill-failed'
+                    : 'outcome-pill-impasse'
+                }`}>
+                  {effectiveSummary.outcome_analysis.outcome_type || 'Concluded'}
+                </span>
+              </div>
+
+              {/* 4 Metric Columns */}
+              <div className="outcome-metrics-grid">
+                <div className="outcome-metric-card">
+                  <span className="outcome-metric-label">Settlement Price</span>
+                  <span className="outcome-metric-val">
+                    {effectiveSummary.outcome_analysis.final_price
+                      ? formatCurrency(effectiveSummary.outcome_analysis.final_price, selectedSim.currency)
+                      : 'No Deal (Deadlock)'}
+                  </span>
+                  <span className="outcome-metric-sub">
+                    {effectiveSummary.outcome_analysis.final_price ? 'Binding Terms Finalized' : 'Impasse reached without convergence'}
+                  </span>
+                </div>
+
+                <div className="outcome-metric-card">
+                  <span className="outcome-metric-label">Buyer / Client Limits</span>
+                  <span className="outcome-metric-val" style={{ fontSize: '1.05rem' }}>
+                    {formatCurrency(effectiveSummary.outcome_analysis.buyer_limits?.target ?? effectiveSummary.outcome_analysis.buyer_target ?? getParticipants(selectedSim).buyer?.target_value, selectedSim.currency)}
+                  </span>
+                  <span className="outcome-metric-sub">
+                    Reservation Limit: {formatCurrency(effectiveSummary.outcome_analysis.buyer_limits?.reservation ?? effectiveSummary.outcome_analysis.buyer_reservation ?? getParticipants(selectedSim).buyer?.reservation_value, selectedSim.currency)}
+                  </span>
+                </div>
+
+                <div className="outcome-metric-card">
+                  <span className="outcome-metric-label">Seller / Vendor Limits</span>
+                  <span className="outcome-metric-val" style={{ fontSize: '1.05rem' }}>
+                    {formatCurrency(effectiveSummary.outcome_analysis.seller_limits?.target ?? effectiveSummary.outcome_analysis.seller_target ?? getParticipants(selectedSim).vendor?.target_value, selectedSim.currency)}
+                  </span>
+                  <span className="outcome-metric-sub">
+                    Reservation Floor: {formatCurrency(effectiveSummary.outcome_analysis.seller_limits?.reservation ?? effectiveSummary.outcome_analysis.seller_reservation ?? getParticipants(selectedSim).vendor?.reservation_value, selectedSim.currency)}
+                  </span>
+                </div>
+
+                <div className="outcome-metric-card">
+                  <span className="outcome-metric-label">Goal Realization Status</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+                    {isPracticeMode ? (
+                      <>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: (effectiveSummary.outcome_analysis.human_goal_achieved ?? effectiveSummary.outcome_analysis.human_achieved_goal) ? '#16a34a' : '#d97706' }}>
+                          Human User: {(effectiveSummary.outcome_analysis.human_goal_achieved ?? effectiveSummary.outcome_analysis.human_achieved_goal) ? 'Target Achieved ✅' : 'Below Aspiration ⚠️'}
+                        </span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: (effectiveSummary.outcome_analysis.ai_goal_achieved ?? effectiveSummary.outcome_analysis.ai_achieved_goal) ? '#16a34a' : '#d97706' }}>
+                          AI Opponent: {(effectiveSummary.outcome_analysis.ai_goal_achieved ?? effectiveSummary.outcome_analysis.ai_achieved_goal) ? 'Target Achieved ✅' : 'Conceded ⚠️'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: effectiveSummary.outcome_analysis.buyer_goal_achieved ? '#16a34a' : '#d97706' }}>
+                          Buyer Agent: {effectiveSummary.outcome_analysis.buyer_goal_achieved ? 'Goal Achieved ✅' : 'Below Target ⚠️'}
+                        </span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: effectiveSummary.outcome_analysis.seller_goal_achieved ? '#16a34a' : '#d97706' }}>
+                          Seller Agent: {effectiveSummary.outcome_analysis.seller_goal_achieved ? 'Goal Achieved ✅' : 'Below Target ⚠️'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Primary Reason Box */}
+              <div className="outcome-reason-box">
+                <h4>Primary Driver of Negotiation Outcome</h4>
+                <p>{effectiveSummary.outcome_analysis.primary_reason || effectiveSummary.outcome_analysis.reason || 'Negotiation concluded.'}</p>
+                <span>{effectiveSummary.outcome_analysis.details || ''}</span>
+              </div>
+            </div>
+          )}
 
           {/* Participants Breakdown: Vendor & Buyer Cards */}
           <div className="report-participants-section">
@@ -1008,6 +1545,246 @@ export default function HistoryReports() {
             </div>
           )}
 
+          {/* Tactical Coaching Recommendations (Member 3 Feature - Strictly Practice Mode Only) */}
+          {isPracticeMode && (
+            <section className="report-coaching-section" style={{ marginTop: '2rem', marginBottom: '2rem' }}>
+              <div className="report-coaching-heading">
+                <Sparkles size={20} />
+                <h2>Personalized Tactical Coaching</h2>
+              </div>
+
+              {coachingLoading && (
+                <p>Loading coaching recommendations...</p>
+              )}
+
+              {coachingError && (
+                <p className="coaching-error">{coachingError}</p>
+              )}
+
+              {(() => {
+                if (coachingLoading) return null;
+
+                const allParticipants = coachingData?.participants || [];
+                // In Practice Mode, strictly isolate and display ONLY the human user's selected role
+                const humanMatches = allParticipants.filter((p) =>
+                  p.is_human === true ||
+                  (p.name && /human|you/i.test(p.name)) ||
+                  (p.display_role && p.display_role.includes('(You)')) ||
+                  (p.role && p.role.includes('(You)'))
+                );
+
+                const userRoleStr = (
+                  selectedSim?.user_role ||
+                  selectedSim?.userRole ||
+                  selectedSim?.agents?.find((a) => a.is_human || a.personality === 'Human' || /human|you/i.test(a.name))?.role ||
+                  'Candidate'
+                );
+
+                let displayedParticipant = humanMatches.length > 0 ? humanMatches[0] : null;
+                if (!displayedParticipant && allParticipants.length > 0) {
+                  const roleMatch = allParticipants.find((p) =>
+                    (p.role || '').toLowerCase().includes(userRoleStr.toLowerCase()) ||
+                    (p.name || '').toLowerCase().includes(userRoleStr.toLowerCase())
+                  );
+                  displayedParticipant = roleMatch || allParticipants[0];
+                }
+
+                const rawRole = displayedParticipant?.role || userRoleStr || 'Negotiator';
+                const cleanRole = rawRole.replace(/\s*\((You|Human)\)$/i, '').trim();
+                const cardTitle = `${cleanRole} (You)`;
+                const cardSubtitle = `${cleanRole} · Human Negotiator`;
+
+                // --- DATA-DRIVEN COACHING GENERATOR ---
+                // Extracts real numerical bids, round steps, and terms across all 3 scenarios
+                const scenarioId = String(selectedSim?.scenario_id || selectedSim?.scenarioId || '').toLowerCase();
+                const scenarioTitle = String(selectedSim?.scenario_title || selectedSim?.title || '').toLowerCase();
+                const isVendor = scenarioId.includes('vendor') || scenarioTitle.includes('vendor') || scenarioTitle.includes('pricing');
+                const isJob = scenarioId.includes('job') || scenarioTitle.includes('job') || scenarioTitle.includes('offer');
+
+                const allMsgs = selectedSim?.messages || [];
+                const humanMsgs = allMsgs.filter((m) =>
+                  m.sender_type === 'HUMAN' ||
+                  (m.sender_role && m.sender_role.includes('(You)')) ||
+                  (m.sender_name && /you|human/i.test(m.sender_name))
+                );
+                const aiMsgs = allMsgs.filter((m) => m.sender_type === 'AGENT' && !humanMsgs.includes(m));
+
+                const humanOffers = (humanMsgs.length > 0 ? humanMsgs : allMsgs.filter((m) => (m.sender_role || '').toLowerCase().includes(cleanRole.toLowerCase())))
+                  .map((m) => ({ value: Number(m.offer_value), round: m.round_number || 1, message: m.message || '', terms: m.terms || {} }))
+                  .filter((o) => Number.isFinite(o.value) && o.value > 0);
+
+                const aiOffers = aiMsgs
+                  .map((m) => ({ value: Number(m.offer_value), round: m.round_number || 1, message: m.message || '' }))
+                  .filter((o) => Number.isFinite(o.value) && o.value > 0);
+
+                const firstHuman = humanOffers[0]?.value;
+                const lastHuman = humanOffers[humanOffers.length - 1]?.value;
+                const lastAi = aiOffers[aiOffers.length - 1]?.value;
+                const totalRounds = selectedSim?.current_round || humanOffers.length || 1;
+                const isDeadlock = selectedSim?.status === 'DEADLOCK';
+                const isAgreed = selectedSim?.status === 'AGREEMENT_REACHED' || selectedSim?.status === 'COMPLETED';
+
+                const dataDrivenImprovements = [];
+
+                if (isVendor) {
+                  // Scenario 1: Vendor Pricing Negotiation
+                  const isBuyerRole = /buyer|procurement|client/i.test(cleanRole);
+                  if (isBuyerRole) {
+                    if (firstHuman && firstHuman >= 105000) {
+                      dataDrivenImprovements.push(`Anchor Conservatism: Your initial offer of ₹${firstHuman.toLocaleString()} was only ₹${(115000 - firstHuman).toLocaleString()} below your ₹115,000 ceiling. Anchoring closer to the ₹90,000 target gives you 20% more bargaining headroom.`);
+                    } else if (firstHuman) {
+                      dataDrivenImprovements.push(`Opening Anchor: Opened at ₹${firstHuman.toLocaleString()}. To improve surplus, hold this anchor for at least two rounds before making upward concessions.`);
+                    }
+                    for (let i = 1; i < humanOffers.length; i++) {
+                      const jump = humanOffers[i].value - humanOffers[i - 1].value;
+                      if (jump > 5000) {
+                        dataDrivenImprovements.push(`Rapid Concession: In Round ${humanOffers[i].round}, your offer surged by ₹${jump.toLocaleString()} (${Math.round((jump / humanOffers[i - 1].value) * 100)}%). Concede in smaller increments (e.g. ₹2,000–₹3,000) to avoid signaling budget flexibility.`);
+                        break;
+                      }
+                    }
+                    const hasNet60 = humanMsgs.some((m) => /net-60|payment|warranty|volume|sla/i.test(m.message));
+                    if (!hasNet60) {
+                      dataDrivenImprovements.push(`Single-Dimension Haggling: All ${humanOffers.length || 1} offers focused solely on price. Require Net-60 payment terms or SLA penalty clauses whenever conceding upward on unit price.`);
+                    }
+                  } else {
+                    if (firstHuman && firstHuman <= 108000) {
+                      dataDrivenImprovements.push(`Soft Opening Anchor: Your opening quote of ₹${firstHuman.toLocaleString()} was near your ₹95,000 floor. Quoting at ₹120,000+ signals premium quality and protects seller margin.`);
+                    }
+                    for (let i = 1; i < humanOffers.length; i++) {
+                      const drop = humanOffers[i - 1].value - humanOffers[i].value;
+                      if (drop > 6000) {
+                        dataDrivenImprovements.push(`Rapid Margin Erosion: Dropped price by ₹${drop.toLocaleString()} in Round ${humanOffers[i].round}. Tie every discount to reciprocal buyer commitments such as larger lot sizes.`);
+                        break;
+                      }
+                    }
+                  }
+                  if (isDeadlock && lastHuman && lastAi) {
+                    dataDrivenImprovements.push(`Deadlock Impasse: Negotiation halted with a ₹${Math.abs(lastHuman - lastAi).toLocaleString()} gap between your offer of ₹${lastHuman.toLocaleString()} and counterpart's ₹${lastAi.toLocaleString()}. Propose a compromise split near ₹${Math.round((lastHuman + lastAi) / 2).toLocaleString()} to unlock deadlock.`);
+                  } else if (isAgreed && lastHuman) {
+                    dataDrivenImprovements.push(`Settlement Efficiency: Deal finalized at ₹${lastHuman.toLocaleString()} in Round ${totalRounds}. Countering once more in Round ${Math.max(1, totalRounds - 1)} could have captured ₹3,000–₹5,000 additional surplus.`);
+                  }
+                } else if (isJob) {
+                  // Scenario 2: Job Offer Negotiation
+                  const isCandidateRole = /candidate|applicant/i.test(cleanRole);
+                  if (isCandidateRole) {
+                    if (firstHuman && firstHuman <= 155000) {
+                      dataDrivenImprovements.push(`Under-Anchoring: Your opening ask of ₹${firstHuman.toLocaleString()} was only ₹${(firstHuman - 140000).toLocaleString()} above your ₹140,000 baseline. Tech candidate opening bids should anchor at ₹175,000–₹185,000 to absorb recruiter counter-reductions.`);
+                    } else if (firstHuman) {
+                      dataDrivenImprovements.push(`Anchor Pacing: Established initial salary ask at ₹${firstHuman.toLocaleString()}. Pair this baseline with objective market compensation data.`);
+                    }
+                    for (let i = 1; i < humanOffers.length; i++) {
+                      const drop = humanOffers[i - 1].value - humanOffers[i].value;
+                      if (drop > 8000) {
+                        dataDrivenImprovements.push(`Premature Salary Concession: In Round ${humanOffers[i].round}, your salary ask dropped by ₹${drop.toLocaleString()} (${Math.round((drop / humanOffers[i - 1].value) * 100)}%). Do not lower base salary without asking for equity or sign-on bonus.`);
+                        break;
+                      }
+                    }
+                    const hasEquityOrBonus = humanMsgs.some((m) => /equity|stock|options|bonus|remote|flexib|sign-on|appraisal/i.test(m.message));
+                    if (!hasEquityOrBonus) {
+                      dataDrivenImprovements.push(`Single-Dimension Focus: All ${humanOffers.length || 1} rounds focused exclusively on base salary. When recruiters reach fixed band caps, introduce sign-on bonuses, equity vesting acceleration, or remote days.`);
+                    }
+                  } else {
+                    if (firstHuman && firstHuman >= 155000) {
+                      dataDrivenImprovements.push(`High Recruiter Anchor: Opened at ₹${firstHuman.toLocaleString()}, leaving only ₹${(165000 - firstHuman).toLocaleString()} before reaching your ₹165,000 budget cap.`);
+                    }
+                    dataDrivenImprovements.push('Total Rewards Framing: Frame compensation around total annual value (performance bonus, learning stipend) to navigate candidate base salary resistance.');
+                  }
+                  if (isDeadlock && lastHuman && lastAi) {
+                    dataDrivenImprovements.push(`Compensation Deadlock: Stalled with a ₹${Math.abs(lastHuman - lastAi).toLocaleString()} salary gap between your ask (₹${lastHuman.toLocaleString()}) and recruiter offer (₹${lastAi.toLocaleString()}). Offer a 6-month performance review to break salary impasses.`);
+                  } else if (isAgreed && lastHuman) {
+                    dataDrivenImprovements.push(`Compensation Capture: Concluded contract at ₹${lastHuman.toLocaleString()} in Round ${totalRounds}. Securing performance appraisal timelines in writing protects future trajectory.`);
+                  }
+                } else {
+                  // Scenario 3: Project Budget Allocation
+                  if (firstHuman && firstHuman >= 420000) {
+                    dataDrivenImprovements.push(`High Initial Allocation Request: Opened requesting ₹${firstHuman.toLocaleString()} (${Math.round(firstHuman / 10000)}% of the total ₹1.0M budget). Demanding over 40% without explicit cross-team ROI justification prompts other leads to form defensive coalitions.`);
+                  } else if (firstHuman) {
+                    dataDrivenImprovements.push(`Department Allocation Baseline: Opened requesting ₹${firstHuman.toLocaleString()} for your department. Prepare cross-functional milestones to defend this allocation.`);
+                  }
+                  for (let i = 1; i < humanOffers.length; i++) {
+                    const drop = humanOffers[i - 1].value - humanOffers[i].value;
+                    if (drop > 15000) {
+                      dataDrivenImprovements.push(`Department Concession Pace: Surrendered ₹${drop.toLocaleString()} of your department's allocation in Round ${humanOffers[i].round}. Tie funding concessions directly to deferred project milestones.`);
+                      break;
+                    }
+                  }
+                  const hasSplit = humanMsgs.some((m) => m.terms && (m.terms.marketing || m.terms.product || m.terms.engineering));
+                  if (!hasSplit) {
+                    dataDrivenImprovements.push('Siloed Budget Demands: Your proposals focused exclusively on your own department share. Proposing a complete 3-department split (Engineering, Marketing, Product AI) summing to ₹1,000,000 drives consensus faster.');
+                  }
+                  if (isDeadlock) {
+                    dataDrivenImprovements.push(`Multilateral Deadlock: Cross-department budget stalled with conflicting demands exceeding the ₹1,000,000 organizational cap across ${totalRounds} rounds.`);
+                  } else if (isAgreed && lastHuman) {
+                    dataDrivenImprovements.push(`Budget Consensus: Concluded with ₹${lastHuman.toLocaleString()} allocated to your department (${Math.round(lastHuman / 10000)}% of total fund). Protect critical infrastructure milestones under this approved allocation.`);
+                  }
+                }
+
+                // If backend returned non-generic items, merge with data-driven feedback
+                const apiImprovements = (displayedParticipant?.areas_for_improvement || []).filter(
+                  (item) => !item.toLowerCase().includes('no major issue was detected')
+                );
+                const finalImprovements = dataDrivenImprovements.length > 0 ? dataDrivenImprovements : (apiImprovements.length > 0 ? apiImprovements : [
+                  'Concession Tapering: Make smaller, conditional counteroffers rather than flat concessions.',
+                  'Multi-Issue Packaging: Bundle secondary preferences with primary targets to unlock negotiation surplus.',
+                ]);
+
+                const finalStrengths = (displayedParticipant?.strengths || []).length > 0
+                  ? displayedParticipant.strengths
+                  : [
+                      `Made ${humanOffers.length || 1} measurable proposal${(humanOffers.length || 1) === 1 ? '' : 's'} during the session.`,
+                      `Maintained active negotiation engagement across ${totalRounds} rounds.`,
+                    ];
+
+                const finalTakeaways = (displayedParticipant?.actionable_takeaways || []).length > 0
+                  ? displayedParticipant.actionable_takeaways
+                  : [
+                      'Establish a firm initial anchor 15-20% beyond baseline expectations.',
+                      'Require reciprocal concessions whenever modifying your offer.',
+                      'Bundle multi-issue terms rather than negotiating on a single dimension.',
+                    ];
+
+                return (
+                  <>
+                    <div className="coaching-participant-card">
+                      <div className="coaching-participant-meta">
+                        <h3>{cardTitle}</h3>
+                        <span>{cardSubtitle}</span>
+                      </div>
+
+                      <h4>Strengths</h4>
+                      <ul>
+                        {finalStrengths.map((item, i) => (
+                          <li key={`strength-${i}`}>{item}</li>
+                        ))}
+                      </ul>
+
+                      <h4>Areas for Improvement</h4>
+                      <ul>
+                        {finalImprovements.map((item, i) => (
+                          <li key={`improvement-${i}`}>{item}</li>
+                        ))}
+                      </ul>
+
+                      <h4>Actionable Recommendations</h4>
+                      <ul>
+                        {finalTakeaways.map((item, i) => (
+                          <li key={`takeaway-${i}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {!coachingLoading && coachingData?.deadlock_recovery && (
+                      <div className="coaching-deadlock-notice">
+                        <strong>Deadlock Recovery Insight</strong>
+                        <p>{coachingData.deadlock_recovery}</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </section>
+          )}
+
           {/* Turn-by-Turn Negotiation Transcript */}
           <div className="report-transcript-section">
             <h2 className="section-heading">
@@ -1111,7 +1888,14 @@ export default function HistoryReports() {
           <div className="history-metrics-strip">
             <div className="metric-strip-item">
               <span className="metric-strip-num">{stats.total}</span>
-              <span className="metric-strip-label">All Completed</span>
+              <span className="metric-strip-label">
+                All Completed
+                {stats.simulationCount > 0 && stats.practiceCount > 0 && (
+                  <span style={{ display: 'block', fontSize: '0.74rem', opacity: 0.8, fontWeight: 500, marginTop: '2px' }}>
+                    ({stats.simulationCount} Sim + {stats.practiceCount} Practice)
+                  </span>
+                )}
+              </span>
             </div>
             <div className="metric-strip-item">
               <span className="metric-strip-num text-success">{stats.agreements}</span>
@@ -1351,5 +2135,13 @@ export default function HistoryReports() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function HistoryReports(props) {
+  return (
+    <ReportErrorBoundary>
+      <HistoryReportsContent {...props} />
+    </ReportErrorBoundary>
   );
 }

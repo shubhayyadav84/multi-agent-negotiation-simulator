@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS simulations (
     user_email VARCHAR(255),
     user_id VARCHAR(128),
     scorecard JSONB,
+    post_summary JSONB,
     deadlock_resolution JSONB,
     deadlock_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

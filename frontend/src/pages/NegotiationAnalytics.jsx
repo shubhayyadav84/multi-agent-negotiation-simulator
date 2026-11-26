@@ -59,7 +59,7 @@ function isLeftInBetween(sim) {
 }
 
 // Retrieve stored practice mode sessions strictly isolated in localStorage
-function getStoredPracticeSessions() {
+export function getStoredPracticeSessions() {
   try {
     const raw = localStorage.getItem('practice_mode_sessions');
     if (raw) {
@@ -90,6 +90,21 @@ function getStoredPracticeSessions() {
       userRole: 'Procurement Buyer',
       opponentRole: 'Enterprise Supplier',
       mode: 'practice',
+      settlement_value: 104000,
+      agents: [
+        { role: 'Procurement Buyer', target_value: 90000, reservation_value: 115000 },
+        { role: 'Enterprise Supplier', target_value: 120000, reservation_value: 95000 },
+      ],
+      offers: [
+        { round_number: 1, agent_role: 'Procurement Buyer', offer_value: 90000 },
+        { round_number: 1, agent_role: 'Enterprise Supplier', offer_value: 120000 },
+        { round_number: 2, agent_role: 'Procurement Buyer', offer_value: 96000 },
+        { round_number: 2, agent_role: 'Enterprise Supplier', offer_value: 115000 },
+        { round_number: 3, agent_role: 'Procurement Buyer', offer_value: 101000 },
+        { round_number: 3, agent_role: 'Enterprise Supplier', offer_value: 109000 },
+        { round_number: 4, agent_role: 'Procurement Buyer', offer_value: 104000 },
+        { round_number: 4, agent_role: 'Enterprise Supplier', offer_value: 104000 },
+      ],
     },
     {
       id: 'practice-seed-2',
@@ -105,6 +120,23 @@ function getStoredPracticeSessions() {
       userRole: 'Procurement Buyer',
       opponentRole: 'Enterprise Supplier',
       mode: 'practice',
+      settlement_value: 105500,
+      agents: [
+        { role: 'Procurement Buyer', target_value: 85000, reservation_value: 115000 },
+        { role: 'Enterprise Supplier', target_value: 125000, reservation_value: 95000 },
+      ],
+      offers: [
+        { round_number: 1, agent_role: 'Procurement Buyer', offer_value: 85000 },
+        { round_number: 1, agent_role: 'Enterprise Supplier', offer_value: 125000 },
+        { round_number: 2, agent_role: 'Procurement Buyer', offer_value: 92000 },
+        { round_number: 2, agent_role: 'Enterprise Supplier', offer_value: 118000 },
+        { round_number: 3, agent_role: 'Procurement Buyer', offer_value: 98000 },
+        { round_number: 3, agent_role: 'Enterprise Supplier', offer_value: 112000 },
+        { round_number: 4, agent_role: 'Procurement Buyer', offer_value: 103000 },
+        { round_number: 4, agent_role: 'Enterprise Supplier', offer_value: 107000 },
+        { round_number: 5, agent_role: 'Procurement Buyer', offer_value: 105500 },
+        { round_number: 5, agent_role: 'Enterprise Supplier', offer_value: 105500 },
+      ],
     },
     {
       id: 'practice-seed-3',
@@ -120,6 +152,19 @@ function getStoredPracticeSessions() {
       userRole: 'Candidate',
       opponentRole: 'Hiring Manager',
       mode: 'practice',
+      settlement_value: 145000,
+      agents: [
+        { role: 'Candidate', target_value: 165000, reservation_value: 125000 },
+        { role: 'Hiring Manager', target_value: 125000, reservation_value: 165000 },
+      ],
+      offers: [
+        { round_number: 1, agent_role: 'Candidate', offer_value: 165000 },
+        { round_number: 1, agent_role: 'Hiring Manager', offer_value: 125000 },
+        { round_number: 2, agent_role: 'Candidate', offer_value: 155000 },
+        { round_number: 2, agent_role: 'Hiring Manager', offer_value: 135000 },
+        { round_number: 3, agent_role: 'Candidate', offer_value: 145000 },
+        { round_number: 3, agent_role: 'Hiring Manager', offer_value: 145000 },
+      ],
     },
     {
       id: 'practice-seed-4',
@@ -135,6 +180,24 @@ function getStoredPracticeSessions() {
       userRole: 'Candidate',
       opponentRole: 'Hiring Manager',
       mode: 'practice',
+      agents: [
+        { role: 'Candidate', target_value: 180000, reservation_value: 140000 },
+        { role: 'Hiring Manager', target_value: 110000, reservation_value: 130000 },
+      ],
+      offers: [
+        { round_number: 1, agent_role: 'Candidate', offer_value: 180000 },
+        { round_number: 1, agent_role: 'Hiring Manager', offer_value: 110000 },
+        { round_number: 2, agent_role: 'Candidate', offer_value: 175000 },
+        { round_number: 2, agent_role: 'Hiring Manager', offer_value: 115000 },
+        { round_number: 3, agent_role: 'Candidate', offer_value: 170000 },
+        { round_number: 3, agent_role: 'Hiring Manager', offer_value: 118000 },
+        { round_number: 4, agent_role: 'Candidate', offer_value: 168000 },
+        { round_number: 4, agent_role: 'Hiring Manager', offer_value: 120000 },
+        { round_number: 5, agent_role: 'Candidate', offer_value: 165000 },
+        { round_number: 5, agent_role: 'Hiring Manager', offer_value: 120000 },
+        { round_number: 6, agent_role: 'Candidate', offer_value: 165000 },
+        { round_number: 6, agent_role: 'Hiring Manager', offer_value: 120000 },
+      ],
     },
     {
       id: 'practice-seed-5',
@@ -150,6 +213,29 @@ function getStoredPracticeSessions() {
       userRole: 'Engineering Lead',
       opponentRole: 'Product Director',
       mode: 'practice',
+      settlement_value: 390000,
+      agents: [
+        { role: 'Engineering Lead', target_value: 450000, reservation_value: 350000 },
+        { role: 'Marketing Lead', target_value: 350000, reservation_value: 250000 },
+        { role: 'Product Director', target_value: 300000, reservation_value: 200000 },
+      ],
+      offers: [
+        { round_number: 1, agent_role: 'Engineering Lead', offer_value: 450000, terms: { engineering: 450000, marketing: 300000, product: 250000 } },
+        { round_number: 1, agent_role: 'Marketing Lead', offer_value: 350000, terms: { engineering: 400000, marketing: 350000, product: 250000 } },
+        { round_number: 1, agent_role: 'Product Director', offer_value: 300000, terms: { engineering: 400000, marketing: 300000, product: 300000 } },
+        { round_number: 2, agent_role: 'Engineering Lead', offer_value: 435000, terms: { engineering: 435000, marketing: 315000, product: 250000 } },
+        { round_number: 2, agent_role: 'Marketing Lead', offer_value: 340000, terms: { engineering: 405000, marketing: 340000, product: 255000 } },
+        { round_number: 2, agent_role: 'Product Director', offer_value: 295000, terms: { engineering: 405000, marketing: 300000, product: 295000 } },
+        { round_number: 3, agent_role: 'Engineering Lead', offer_value: 415000, terms: { engineering: 415000, marketing: 320000, product: 265000 } },
+        { round_number: 3, agent_role: 'Marketing Lead', offer_value: 330000, terms: { engineering: 405000, marketing: 330000, product: 265000 } },
+        { round_number: 3, agent_role: 'Product Director', offer_value: 290000, terms: { engineering: 400000, marketing: 310000, product: 290000 } },
+        { round_number: 4, agent_role: 'Engineering Lead', offer_value: 400000, terms: { engineering: 400000, marketing: 320000, product: 280000 } },
+        { round_number: 4, agent_role: 'Marketing Lead', offer_value: 325000, terms: { engineering: 395000, marketing: 325000, product: 280000 } },
+        { round_number: 4, agent_role: 'Product Director', offer_value: 285000, terms: { engineering: 395000, marketing: 320000, product: 285000 } },
+        { round_number: 5, agent_role: 'Engineering Lead', offer_value: 390000, terms: { engineering: 390000, marketing: 325000, product: 285000 } },
+        { round_number: 5, agent_role: 'Marketing Lead', offer_value: 325000, terms: { engineering: 390000, marketing: 325000, product: 285000 } },
+        { round_number: 5, agent_role: 'Product Director', offer_value: 285000, terms: { engineering: 390000, marketing: 325000, product: 285000 } },
+      ],
     },
     {
       id: 'practice-seed-6',
@@ -165,6 +251,21 @@ function getStoredPracticeSessions() {
       userRole: 'Procurement Buyer',
       opponentRole: 'Enterprise Supplier',
       mode: 'practice',
+      settlement_value: 105000,
+      agents: [
+        { role: 'Procurement Buyer', target_value: 92000, reservation_value: 114000 },
+        { role: 'Enterprise Supplier', target_value: 118000, reservation_value: 96000 },
+      ],
+      offers: [
+        { round_number: 1, agent_role: 'Procurement Buyer', offer_value: 92000 },
+        { round_number: 1, agent_role: 'Enterprise Supplier', offer_value: 118000 },
+        { round_number: 2, agent_role: 'Procurement Buyer', offer_value: 97000 },
+        { round_number: 2, agent_role: 'Enterprise Supplier', offer_value: 113000 },
+        { round_number: 3, agent_role: 'Procurement Buyer', offer_value: 102000 },
+        { round_number: 3, agent_role: 'Enterprise Supplier', offer_value: 108000 },
+        { round_number: 4, agent_role: 'Procurement Buyer', offer_value: 105000 },
+        { round_number: 4, agent_role: 'Enterprise Supplier', offer_value: 105000 },
+      ],
     },
   ];
 }
@@ -178,7 +279,7 @@ export default function NegotiationAnalytics() {
   const [analyticsMode, setAnalyticsMode] = useState('SIMULATION');
 
   const [simulations, setSimulations] = useState([]);
-  const [practiceSessions, setPracticeSessions] = useState(() => getStoredPracticeSessions().filter((s) => !String(s.id || '').startsWith('practice-seed')));
+  const [practiceSessions, setPracticeSessions] = useState(() => getStoredPracticeSessions());
   const [loading, setLoading] = useState(true);
   const [hoveredMonth, setHoveredMonth] = useState(null);
 
@@ -203,7 +304,7 @@ export default function NegotiationAnalytics() {
   const reloadPracticeSessions = () => {
     setLoading(true);
     setTimeout(() => {
-      setPracticeSessions(getStoredPracticeSessions().filter((s) => !String(s.id || '').startsWith('practice-seed')));
+      setPracticeSessions(getStoredPracticeSessions());
       setLoading(false);
     }, 350);
   };
@@ -211,7 +312,7 @@ export default function NegotiationAnalytics() {
   const handleRefreshTelemetry = async () => {
     setLoading(true);
     try {
-      setPracticeSessions(getStoredPracticeSessions().filter((s) => !String(s.id || '').startsWith('practice-seed')));
+      setPracticeSessions(getStoredPracticeSessions());
       await fetchSimulations();
     } catch (e) {
       console.warn('Telemetry refresh error:', e);
@@ -768,6 +869,163 @@ export default function NegotiationAnalytics() {
   const activeTrendDots = useMemo(() => {
     return trendPoints.filter((pt) => pt.count > 0);
   }, [trendPoints]);
+
+  // Dynamic Multi-Session Negotiation Tactics Aggregator
+  const dynamicTactics = useMemo(() => {
+    const list = analyticsMode === 'SIMULATION' ? simulations : practiceSessions;
+    const isPractice = analyticsMode === 'PRACTICE';
+
+    const counts = isPractice
+      ? {
+          'Collaboration': 0,
+          'Compromise': 0,
+          'Firm Anchoring': 0,
+          'Accommodation': 0,
+          'Deliberation': 0,
+        }
+      : {
+          'Collaboration': 0,
+          'Compromise': 0,
+          'Competition': 0,
+          'Accommodation': 0,
+          'Avoidance': 0,
+        };
+
+    if (Array.isArray(list) && list.length > 0) {
+      list.forEach((s) => {
+        const isAgreement = s.status === 'AGREEMENT_REACHED' || s.status === 'COMPLETED';
+        const isDeadlock = s.status === 'DEADLOCK';
+        const rounds = Number(s.current_round || s.rounds || 1);
+
+        if (Array.isArray(s.messages) && s.messages.length > 0) {
+          s.messages.forEach((m) => {
+            if (m.sender_type === 'ORCHESTRATOR') return;
+            const text = String(m.message || '').toLowerCase();
+            const action = String(m.action || '').toUpperCase();
+
+            if (action === 'ACCEPT' || text.includes('collaborat') || text.includes('partnership') || text.includes('mutual')) {
+              counts['Collaboration']++;
+            } else if (action === 'COUNTER_OFFER' || text.includes('compromise') || text.includes('concession')) {
+              counts['Compromise']++;
+            } else if (text.includes('firm') || text.includes('reject') || text.includes('non-negotiable') || text.includes('strict')) {
+              if (isPractice) counts['Firm Anchoring']++;
+              else counts['Competition']++;
+            } else if (text.includes('agree') || text.includes('willing') || text.includes('accommodat')) {
+              counts['Accommodation']++;
+            } else {
+              if (isPractice) counts['Deliberation']++;
+              else counts['Avoidance']++;
+            }
+          });
+        } else {
+          // Infer from session-level characteristics when raw messages are pending
+          if (isAgreement) {
+            counts['Collaboration'] += Math.max(1, rounds - 1);
+            counts['Compromise'] += Math.max(1, Math.floor(rounds / 2));
+            counts['Accommodation'] += 1;
+          }
+          if (isDeadlock) {
+            if (isPractice) counts['Firm Anchoring'] += Math.max(2, rounds);
+            else counts['Competition'] += Math.max(2, rounds);
+            if (isPractice) counts['Deliberation'] += 1;
+            else counts['Avoidance'] += 1;
+          } else {
+            if (isPractice) counts['Firm Anchoring'] += 1;
+            else counts['Competition'] += 1;
+          }
+        }
+      });
+    }
+
+    const totalTactics = Object.values(counts).reduce((a, b) => a + b, 0);
+    const maxCount = Math.max(...Object.values(counts), 1);
+
+    return Object.entries(counts).map(([tactic, count]) => {
+      const pctVal = totalTactics > 0 ? Math.round((count / totalTactics) * 100) : 20;
+      const barWidthPct = Math.min(100, Math.max(12, Math.round((count / maxCount) * 95)));
+      return {
+        tactic,
+        count,
+        pct: `${pctVal}%`,
+        barWidth: `${barWidthPct}%`,
+      };
+    });
+  }, [analyticsMode, simulations, practiceSessions]);
+
+  // Dynamic Multi-Session Sentiment & Emotional Trajectory Waveform
+  const dynamicSentimentWave = useMemo(() => {
+    const list = analyticsMode === 'SIMULATION' ? simulations : practiceSessions;
+    let maxR = 6;
+    if (Array.isArray(list) && list.length > 0) {
+      list.forEach((s) => {
+        const r = Number(s.current_round || s.rounds || 1);
+        if (r > maxR && r <= 10) maxR = r;
+      });
+    }
+
+    const pointsCount = Math.max(4, Math.min(8, maxR));
+    const roundStepX = 300 / (pointsCount - 1);
+
+    const posPoints = [];
+    const neuPoints = [];
+    const compPoints = [];
+
+    const agreementRate = list.length > 0
+      ? list.filter((s) => s.status === 'AGREEMENT_REACHED' || s.status === 'COMPLETED').length / list.length
+      : 0.75;
+    const deadlockRate = 1 - agreementRate;
+
+    for (let i = 0; i < pointsCount; i++) {
+      const x = Math.round(10 + i * roundStepX);
+      const progress = i / (pointsCount - 1);
+
+      // Positive curve: starts moderate, ascends with agreement likelihood
+      const posBaseY = 75 - progress * (agreementRate * 45);
+      const posY = Math.round(Math.max(18, Math.min(95, posBaseY + Math.sin(i * 1.5) * 4)));
+      posPoints.push({ x, y: posY });
+
+      // Neutral curve: steady deliberation baseline
+      const neuY = Math.round(Math.max(50, Math.min(95, 88 - progress * 16 + Math.cos(i * 1.2) * 4)));
+      neuPoints.push({ x, y: neuY });
+
+      // Competitive / Tense curve: begins elevated, descends if agreement or remains high if deadlock
+      const compBaseY = 55 + progress * (25 - deadlockRate * 30);
+      const compY = Math.round(Math.max(30, Math.min(95, compBaseY + Math.sin(i * 2.1) * 5)));
+      compPoints.push({ x, y: compY });
+    }
+
+    const toPath = (pts) => {
+      if (pts.length === 0) return '';
+      let d = `M ${pts[0].x},${pts[0].y}`;
+      for (let i = 1; i < pts.length; i++) {
+        const prev = pts[i - 1];
+        const curr = pts[i];
+        const cx = Math.round((prev.x + curr.x) / 2);
+        d += ` Q ${cx},${prev.y} ${curr.x},${curr.y}`;
+      }
+      return d;
+    };
+
+    const posPath = toPath(posPoints);
+    const neuPath = toPath(neuPoints);
+    const compPath = toPath(compPoints);
+    const posAreaPath = posPoints.length > 0
+      ? `${posPath} L ${posPoints[posPoints.length - 1].x},105 L ${posPoints[0].x},105 Z`
+      : '';
+
+    const turns = Array.from({ length: pointsCount }, (_, idx) => `Turn ${idx + 1}`);
+
+    return {
+      posPoints,
+      neuPoints,
+      compPoints,
+      posPath,
+      posAreaPath,
+      neuPath,
+      compPath,
+      turns,
+    };
+  }, [analyticsMode, simulations, practiceSessions]);
 
   return (
     <div className="analytics-page-container">
@@ -1471,26 +1729,11 @@ export default function NegotiationAnalytics() {
                 <h3 className="chart-card-title">
                   {analyticsMode === 'SIMULATION' ? 'Negotiation Tactics Used' : 'Tactics Deployed by You'}
                 </h3>
-                <span className="chart-card-sublabel">Tactics Frequency</span>
+                <span className="chart-card-sublabel">Tactics Frequency ({dynamicTactics.reduce((a, b) => a + (b.count || 0), 0)} Observed)</span>
               </div>
 
               <div className="tactics-list">
-                {(analyticsMode === 'SIMULATION'
-                  ? [
-                      { tactic: 'Collaboration', pct: '35%', barWidth: '95%' },
-                      { tactic: 'Compromise', pct: '28%', barWidth: '80%' },
-                      { tactic: 'Competition', pct: '18%', barWidth: '55%' },
-                      { tactic: 'Accommodation', pct: '12%', barWidth: '40%' },
-                      { tactic: 'Avoidance', pct: '7%', barWidth: '22%' },
-                    ]
-                  : [
-                      { tactic: 'Collaboration', pct: '38%', barWidth: '95%' },
-                      { tactic: 'Compromise', pct: '30%', barWidth: '78%' },
-                      { tactic: 'Firm Anchoring', pct: '16%', barWidth: '45%' },
-                      { tactic: 'Accommodation', pct: '10%', barWidth: '28%' },
-                      { tactic: 'Deliberation', pct: '6%', barWidth: '16%' },
-                    ]
-                ).map((tactic) => (
+                {dynamicTactics.map((tactic) => (
                   <div key={tactic.tactic} className="tactic-row">
                     <span className="tactic-name">{tactic.tactic}</span>
                     <div className="tactic-bar-wrap">
@@ -1538,57 +1781,61 @@ export default function NegotiationAnalytics() {
                       <line x1="0" y1="55" x2="320" y2="55" stroke="var(--border-subtle, #f1f5f9)" strokeDasharray="3 3" />
                       <line x1="0" y1="95" x2="320" y2="95" stroke="var(--border-subtle, #f1f5f9)" strokeDasharray="3 3" />
 
+                      {/* Positive Wave & Gradient Area */}
                       <path
-                        d="M 10,75 Q 40,40 70,55 T 130,30 T 190,45 T 250,25 T 310,40"
+                        d={dynamicSentimentWave.posPath}
                         fill="none"
                         stroke="#10b981"
                         strokeWidth="2.4"
                         strokeLinecap="round"
                       />
-                      <path
-                        d="M 10,75 Q 40,40 70,55 T 130,30 T 190,45 T 250,25 T 310,40 L 310,105 L 10,105 Z"
-                        fill="#10b981"
-                        fillOpacity="0.08"
-                      />
+                      {dynamicSentimentWave.posAreaPath && (
+                        <path
+                          d={dynamicSentimentWave.posAreaPath}
+                          fill="#10b981"
+                          fillOpacity="0.08"
+                        />
+                      )}
 
+                      {/* Neutral Wave */}
                       <path
-                        d="M 10,95 Q 40,75 70,85 T 130,68 T 190,80 T 250,60 T 310,72"
+                        d={dynamicSentimentWave.neuPath}
                         fill="none"
                         stroke="#2563eb"
                         strokeWidth="2.2"
                         strokeLinecap="round"
                       />
 
+                      {/* Competitive / Tense Wave */}
                       <path
-                        d="M 10,85 Q 40,65 70,68 T 130,55 T 190,62 T 250,50 T 310,65"
+                        d={dynamicSentimentWave.compPath}
                         fill="none"
                         stroke="#f43f5e"
                         strokeWidth="2.2"
                         strokeLinecap="round"
                       />
 
-                      <circle cx="70" cy="55" r="3.5" fill="#10b981" />
-                      <circle cx="160" cy="14" r="3.5" fill="#10b981" />
-                      <circle cx="250" cy="25" r="3.5" fill="#10b981" />
-
-                      <circle cx="70" cy="85" r="3.5" fill="#2563eb" />
-                      <circle cx="190" cy="80" r="3.5" fill="#2563eb" />
-
-                      <circle cx="130" cy="55" r="3.5" fill="#f43f5e" />
-                      <circle cx="250" cy="50" r="3.5" fill="#f43f5e" />
+                      {/* Dynamic Points */}
+                      {dynamicSentimentWave.posPoints.map((pt, pIdx) => (
+                        <circle key={`pos-${pIdx}`} cx={pt.x} cy={pt.y} r="3" fill="#10b981" />
+                      ))}
+                      {dynamicSentimentWave.neuPoints.map((pt, nIdx) => (
+                        <circle key={`neu-${nIdx}`} cx={pt.x} cy={pt.y} r="3" fill="#2563eb" />
+                      ))}
+                      {dynamicSentimentWave.compPoints.map((pt, cIdx) => (
+                        <circle key={`comp-${cIdx}`} cx={pt.x} cy={pt.y} r="3" fill="#f43f5e" />
+                      ))}
                     </svg>
                   </div>
                 </div>
 
                 <div className="sentiment-x-axis">
-                  <span>Turn 1</span>
-                  <span>Turn 2</span>
-                  <span>Turn 4</span>
-                  <span>Turn 6</span>
-                  <span>Turn 8</span>
+                  {dynamicSentimentWave.turns.map((turn, tIdx) => (
+                    <span key={tIdx}>{turn}</span>
+                  ))}
                 </div>
                 <p className="sentiment-caption">
-                  Conversation Turns (Avg. {activeStats.avgRounds} Rounds / Session)
+                  Conversation Turns (Avg. {activeStats.avgRounds} Rounds / Session across {activeStats.total} Sessions)
                 </p>
               </div>
             </div>

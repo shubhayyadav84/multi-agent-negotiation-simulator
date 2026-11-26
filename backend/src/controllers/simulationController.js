@@ -357,10 +357,44 @@ async function exportSimulation(req, res) {
   }
 }
 
+/**
+ * Get Post-Interaction Summary for a completed simulation
+ * GET /api/simulations/:id/summary
+ */
+async function getSimulationSummary(req, res) {
+  try {
+    const { id } = req.params;
+    const sim = await db.getSimulation(id);
+
+    if (!sim) {
+      return res.status(404).json({ success: false, error: 'Simulation not found' });
+    }
+
+    if (sim.post_summary) {
+      return res.json({ success: true, data: sim.post_summary });
+    }
+
+    // Generate on the fly if not yet cached
+    const { generatePostInteractionSummary } = require('../services/summaryAgentService');
+    const summary = generatePostInteractionSummary(sim);
+
+    try {
+      await db.updateSimulation(id, { post_summary: summary });
+    } catch (saveErr) {
+      console.warn('[SimulationController] Failed to persist post_summary cache:', saveErr.message);
+    }
+
+    return res.json({ success: true, data: summary });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+}
+
 module.exports = {
   startSimulation,
   getSimulationState,
   getSimulationRecommendations,
+  getSimulationSummary,
   listSimulations,
   advanceSimulationStep,
   runFullSimulation,

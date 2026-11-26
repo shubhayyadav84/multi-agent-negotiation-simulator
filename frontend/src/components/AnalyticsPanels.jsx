@@ -6,58 +6,93 @@ import { SCENARIO_TABS, concessionVelocity, surplusEfficiency } from '../utils/a
 const COLORS = ['#2563eb', '#f59e0b', '#10b981', '#a855f7'];
 const money = (n) => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
-/** Loads the full session (with offers) for the newest sessions. */
-function useSessionDetails(sessions) {
-  const [details, setDetails] = useState([]);
-  const key = (sessions || []).map((s) => s.id).join('|');
+/** Loads the full session (with offers) for relevant sessions. */
+function useSessionDetails(sessions, activeTab) {
+  const [detailsMap, setDetailsMap] = useState({});
+
   useEffect(() => {
     let cancelled = false;
-    const ids = (sessions || [])
-      .map((s) => s.id)
-      .filter((id) => id && !String(id).startsWith('practice-seed'))
-      .slice(0, 15);
-    if (ids.length === 0) {
-      setDetails([]);
-      return undefined;
-    }
-    Promise.all(ids.map((id) => getSimulationState(id).catch(() => null))).then((list) => {
-      if (!cancelled) setDetails(list.filter(Boolean));
+    const list = sessions || [];
+    if (list.length === 0) return;
+
+    // Check sessions that already have offers or messages
+    const readySessions = {};
+    const toFetch = [];
+
+    list.forEach((s) => {
+      if (!s || !s.id) return;
+      const hasOffers = Array.isArray(s.offers) && s.offers.length > 0;
+      const hasMessages = Array.isArray(s.messages) && s.messages.length > 0;
+      if (hasOffers || hasMessages) {
+        readySessions[s.id] = s;
+      } else if (!String(s.id).startsWith('practice-seed')) {
+        toFetch.push(s);
+      }
     });
+
+    if (Object.keys(readySessions).length > 0) {
+      setDetailsMap((prev) => ({ ...readySessions, ...prev }));
+    }
+
+    if (toFetch.length === 0) return;
+
+    const isMatchingTab = (s) => {
+      const sid = String(s.scenario_id || s.scenario_title || '').toLowerCase();
+      if (activeTab === 'vendor-pricing') return sid.includes('vendor') || sid.includes('pricing') || sid.includes('procurement');
+      if (activeTab === 'job-offer') return sid.includes('job') || sid.includes('offer') || sid.includes('salary');
+      if (activeTab === 'project-budget') return sid.includes('project') || sid.includes('budget') || sid.includes('allocation');
+      return true;
+    };
+
+    const matching = toFetch.filter(isMatchingTab);
+    const nonMatching = toFetch.filter((s) => !isMatchingTab(s));
+    const idsToFetch = [...matching.slice(0, 20), ...nonMatching.slice(0, 10)]
+      .map((s) => s.id)
+      .filter((id) => !detailsMap[id]);
+
+    if (idsToFetch.length === 0) return;
+
+    Promise.all(idsToFetch.map((id) => getSimulationState(id).catch(() => null))).then((results) => {
+      if (cancelled) return;
+      const fetchedMap = {};
+      results.filter(Boolean).forEach((sim) => {
+        if (sim && sim.id) fetchedMap[sim.id] = sim;
+      });
+      setDetailsMap((prev) => ({ ...prev, ...fetchedMap }));
+    });
+
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return details;
+  }, [sessions, activeTab]);
+
+  return useMemo(() => {
+    const map = { ...detailsMap };
+    (sessions || []).forEach((s) => {
+      if (s && s.id && !map[s.id]) {
+        map[s.id] = s;
+      }
+    });
+    return Object.values(map);
+  }, [detailsMap, sessions]);
 }
 
 function VelocityChart({ data }) {
   const W = 640;
   const H = 250;
   const L = 64;
-  const R = 16;
-  const T = 14;
+  const R = 24;
+  const T = 20;
   const B = 36;
   const values = data.series.flatMap((s) => s.points.map((p) => p.value).filter((v) => v !== null));
-  const yMax = Math.max(1, ...values);
-  const x = (r) => L + ((r - 2) / Math.max(1, data.maxRound - 2)) * (W - L - R);
-  const y = (v) => T + (1 - v / yMax) * (H - T - B);
+  const maxVal = Math.max(0, ...values);
+  const yMax = maxVal > 0 ? maxVal * 1.15 : 10000;
+  const maxRound = Math.max(3, data.maxRound || 3);
+  const x = (r) => L + ((r - 2) / Math.max(1, maxRound - 2)) * (W - L - R);
+  const y = (v) => T + (1 - (v || 0) / yMax) * (H - T - B);
   const rounds = [];
-  for (let r = 2; r <= data.maxRound; r += 1) rounds.push(r);
-  const runs = (points) => {
-    const out = [];
-    let cur = [];
-    points.forEach((p) => {
-      if (p.value === null) {
-        if (cur.length) out.push(cur);
-        cur = [];
-      } else {
-        cur.push(p);
-      }
-    });
-    if (cur.length) out.push(cur);
-    return out;
-  };
+  for (let r = 2; r <= maxRound; r += 1) rounds.push(r);
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Concession velocity per round">
       {[0, 0.5, 1].map((f) => (
@@ -75,22 +110,36 @@ function VelocityChart({ data }) {
       ))}
       {data.series.map((s, i) => {
         const color = COLORS[i % COLORS.length];
+        const validPoints = s.points.filter((p) => p.value !== null);
         return (
           <g key={s.role}>
-            {runs(s.points).map((run, k) =>
-              run.length > 1 ? (
-                <path
-                  key={k}
-                  d={run.map((p, j) => `${j === 0 ? 'M' : 'L'} ${x(p.round)} ${y(p.value)}`).join(' ')}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth="2.5"
-                />
-              ) : null
+            {validPoints.length > 1 && (
+              <path
+                d={validPoints.map((p, j) => `${j === 0 ? 'M' : 'L'} ${x(p.round)} ${y(p.value)}`).join(' ')}
+                fill="none"
+                stroke={color}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             )}
-            {s.points.map((p) =>
-              p.value === null ? null : <circle key={p.round} cx={x(p.round)} cy={y(p.value)} r="3.5" fill={color} />
+            {validPoints.length === 1 && (
+              <line
+                x1={Math.max(L, x(validPoints[0].round) - 20)}
+                x2={Math.min(W - R, x(validPoints[0].round) + 20)}
+                y1={y(validPoints[0].value)}
+                y2={y(validPoints[0].value)}
+                stroke={color}
+                strokeWidth="3"
+                strokeDasharray="4 2"
+              />
             )}
+            {validPoints.map((p) => (
+              <g key={p.round}>
+                <circle cx={x(p.round)} cy={y(p.value)} r="4.5" fill={color} stroke="#ffffff" strokeWidth="2" />
+                <title>{`${s.role} Round ${p.round}: ₹${money(p.value)}/rnd`}</title>
+              </g>
+            ))}
           </g>
         );
       })}
@@ -112,9 +161,7 @@ export function PanelsView({ sessions, details, tab, onTab }) {
   }, [sessions]);
 
   return (
-    <div
-      style={{ display: 'grid', gap: '1.25rem', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', marginTop: '1.25rem' }}
-    >
+    <div className="analytics-charts-grid" style={{ marginTop: '1.25rem' }}>
       <div className="analytics-chart-card" data-testid="deadlock-patterns">
         <div className="chart-card-header">
           <h3 className="chart-card-title">Deadlock Pattern Detector</h3>
@@ -182,7 +229,7 @@ export function PanelsView({ sessions, details, tab, onTab }) {
         )}
       </div>
 
-      <div className="analytics-chart-card" style={{ gridColumn: '1 / -1' }} data-testid="concession-velocity">
+      <div className="analytics-chart-card" data-testid="concession-velocity">
         <div className="chart-card-header">
           <h3 className="chart-card-title">Concession Velocity Curves</h3>
           <span className="chart-card-sublabel">
@@ -241,8 +288,8 @@ export function PanelsView({ sessions, details, tab, onTab }) {
 
 /** Drop-in section for the Analytics page. */
 export function AnalyticsPanels({ sessions }) {
-  const details = useSessionDetails(sessions);
   const [tab, setTab] = useState('vendor-pricing');
+  const details = useSessionDetails(sessions, tab);
   return <PanelsView sessions={sessions} details={details} tab={tab} onTab={setTab} />;
 }
 

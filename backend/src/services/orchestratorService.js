@@ -14,6 +14,9 @@ const { db } = require('../db/db');
 const {
   calculateResolutionScore,
 } = require('./resolutionScoringService');
+const {
+  generatePostInteractionSummary,
+} = require('./summaryAgentService');
 const { getAgentNegotiationMove } = require('./aiClient');
 
 // Canonical Scenario Presets
@@ -2108,14 +2111,21 @@ if (
   agreement_likelihood: likelihood,
 });
 
-// Calculate and save the resolution score after the negotiation ends.
-if (['COMPLETED', 'DEADLOCK'].includes(newStatus)) {
+// Calculate and save the resolution score and post-interaction summary after the negotiation ends.
+if (['COMPLETED', 'DEADLOCK', 'AGREEMENT_REACHED'].includes(newStatus)) {
   const completedSimulation = await db.getSimulation(simulationId);
 
   const scorecard = calculateResolutionScore(completedSimulation);
+  let post_summary = null;
+  try {
+    post_summary = generatePostInteractionSummary(completedSimulation);
+  } catch (err) {
+    console.warn('[SummaryAgent] Failed to generate summary:', err.message);
+  }
 
   await db.updateSimulation(simulationId, {
     scorecard,
+    ...(post_summary ? { post_summary } : {}),
   });
 }
 

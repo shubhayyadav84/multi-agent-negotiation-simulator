@@ -50,9 +50,15 @@ An AI-powered negotiation simulation and training platform designed to model, st
     - [Task 2: AI Multi-Round Reasoning & Multi-Tier Fallback Architecture](#task-2-ai-multi-round-reasoning--multi-tier-fallback-architecture)
     - [Task 3: Interactive Practice Mode (Human-vs-AI) with Voice Dictation](#task-3-interactive-practice-mode-human-vs-ai-with-voice-dictation)
     - [Task 4: Universal Deadlock Resolution System & Mathematical Auto-Agreement](#task-4-universal-deadlock-resolution-system--mathematical-auto-agreement)
+  - [Milestone 4: Post-Interaction Analysis, Performance Analytics & Final Delivery](#milestone-4-post-interaction-analysis-performance-analytics--final-delivery)
+    - [Task 1: Post-Interaction Summary Agent Engine](#task-1-post-interaction-summary-agent-engine)
+    - [Task 2: Sentiment Journey Timeline & Emotional Trajectory Visualizer](#task-2-sentiment-journey-timeline--emotional-trajectory-visualizer)
+    - [Task 3: Outcome & Resolution Quality Scoring Engine](#task-3-outcome--resolution-quality-scoring-engine)
+    - [Task 4: Personalized Recommendations & Tactical Coaching Engine](#task-4-personalized-recommendations--tactical-coaching-engine)
+    - [Task 5: Multi-Session Performance Analytics & Deadlock Pattern Detector](#task-5-multi-session-performance-analytics--deadlock-pattern-detector)
 - [Team Task Division](#team-task-division)
 - [Core Features](#core-features)
-  - [Completed Features (Milestones 1, 2 & 3 — Tasks 1 to 4)](#completed-features-milestones-1-2--3--tasks-1-to-4)
+  - [Completed Features (Milestones 1, 2, 3 & 4)](#completed-features-milestones-1-2-3--4)
 - [Tech Stack](#tech-stack)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
@@ -194,38 +200,78 @@ The **Multi-Agent Negotiation Simulator (Negotiator AI)** provides a full-stack 
 
 ---
 
+### Milestone 4: Post-Interaction Analysis, Performance Analytics & Final Delivery
+
+#### Task 1: Post-Interaction Summary Agent Engine (`summaryAgentService.js`)
+- **Autonomous Summary Generator:** Ingests complete multi-round logs upon completion or deadlock, extracting initial anchor positions, concession trajectories, and ratified settlement terms.
+- **Executive Narrative Generation:** Formulates structured natural-language reports explaining how agents converged within the ZOPA or why an impasse occurred.
+- **Practice Mode Trajectory Analysis:** Tracks the human user's strategic milestones (Opening Anchor Placement, Pivotal Concession Move, Deadlock Resistance, and Final Settlement Closure).
+- **Offline Heuristic Fallback (`simulationApi.js`):** Built-in client-side generator with an active 3500ms timeout guard, guaranteeing immediate local summary synthesis during backend cold starts.
+- **PostgreSQL JSONB Persistence:** Persists complete analytical payloads directly into the `simulations.post_summary` column in Neon PostgreSQL.
+
+#### Task 2: Sentiment Journey Timeline & Emotional Trajectory Visualizer (`HistoryReports.jsx`)
+- **Round-by-Round Sentiment Analysis:** Evaluates message tone, stance rigidity, and collaboration level on a normalized scale from $-1.0 \text{ to } +1.0$.
+- **Interactive Emotional Trajectory Chart:** Renders continuous SVG/Canvas curves plotting contrasting agent trajectories (Collaborative vs. Aggressive arcs).
+- **Human Stance Progression Tracker:** Maps human decision states across 5 milestones (`Awaiting Offer` → `In Dialogue` → `Firm` → `Compromising` → `Agreed`).
+- **Collision-Free Tooltip Positioning:** Dynamic viewport offset algorithms displaying round quotes, speaker badges, and stance tags without UI clipping.
+
+#### Task 3: Outcome & Resolution Quality Scoring Engine
+- **Mathematical 4-Factor Scoring Rubric ($0 - 100$):**
+  $$\text{Resolution Score} = (0.30 \times S_{\text{goal}}) + (0.25 \times S_{\text{agreement}}) + (0.25 \times S_{\text{effectiveness}}) + (0.20 \times S_{\text{concession}})$$
+- **Goal Achievement ($S_{\text{goal}}$, 30%):** Evaluates settlement proximity to target aspirations relative to reservation limits.
+- **Turn Efficiency ($S_{\text{effectiveness}}$, 25%):** Rewards early convergence while penalizing protracted negotiations.
+- **Concession Management ($S_{\text{concession}}$, 20%):** Audits concession discipline, penalizing erratic jumps or rapid surplus erosion.
+- **Zero-Concession Penalty:** Enforces a strict score cap ($< 50/100$) when users prematurely capitulate to opening asks without bargaining.
+- **Score Tiering Badges:** Categorizes outcomes into **Superior (90–100)**, **Competent (75–89)**, **Moderate (60–74)**, and **Subpar (<60)**.
+
+#### Task 4: Personalized Recommendations & Tactical Coaching Engine
+- **Post-Negotiation Tactical Critique Generator:** Evaluates bargaining behaviors and produces actionable strategic feedback.
+- **Comparative Archetype Critiques (AI vs AI):** Highlights where Aggressive personas lost surplus and where Collaborative personas conceded too quickly.
+- **Personalized Human Feedback:** Populates 3 structured feedback modules:
+  - **Strengths:** Commends strong opening anchors, firm walkaway defense, and measured pacing.
+  - **Vulnerabilities / Areas for Improvement:** Flags erratic jumps, one-sided concessions, or non-numeric inputs.
+  - **Actionable Takeaways:** Delivers 3 role-specific procurement or employment compensation guidelines.
+
+#### Task 5: Multi-Session Performance Analytics & Deadlock Pattern Detector (`NegotiationAnalytics.jsx`)
+- **Macro Analytics Dashboard:** Aggregates multi-session historical data across Simulation and Practice modes.
+- **Deadlock Pattern Detector:** Categorizes recurring impasse causes into structured clusters (*Aggressive Stance Standoff*, *Reservation Boundary Exhaustion*, *Non-Offer Deadlock*).
+- **ZOPA Surplus Realization Efficiency:** Calculates global surplus realization efficiency (**19%** across 79 benchmark sessions).
+- **Concession Velocity Curves:** Plots round-by-round first derivative offer changes ($V_t = |O_t - O_{t-1}| / \Delta t$) across scenarios.
+- **Strict Session Filtering:** Isolated filter controls separating autonomous simulation data from human practice records.
+
+---
+
 ## Team Task Division
 
 | Team Member | Milestone Responsibilities | Key Deliverables |
 | :--- | :--- | :--- |
-| **Shubhay Yadav** | **Concession Math, Deadlock Resolution & Full-Stack Integration** | Concession curve mathematical formulation, Universal Deadlock Resolution engine, mathematical crossover auto-acceptance, 3-tier AI fallback engine, PDF export, and backend test suites. |
-| **Niharika Indurthi** | **Arena UI, Practice Mode Dock & Voice Input** | Interactive Negotiation Arena dashboard, human bargaining dock, Web Speech API voice dictation, real-time message alignment, and mobile viewport optimization. |
-| **Saitejaswini Tammana** | **Scenario Templates, Constraint Rules & Practice Validation** | Centralized scenario schema (`scenarios.js`), boundary constraint enforcement (Net-60 hard rules), fallback presets, and multi-scenario Practice Mode test validation report. |
-| **Keerthana** | **Agent Configuration, Database Persistence & Auth** | Agent configuration cards, personality selector controls, Neon PostgreSQL schema, Prisma history persistence, and Firebase Admin ID token authentication. |
-| **Karthik Vana** | **Orchestrator State Machine, Decision Engine & Analytics** | Alternating turn-taking orchestrator, pure Python offer evaluation module (`ai-service/decision`), outcome analytics (Joint Utility, Pareto, Fairness), and E2E integration test suite. |
+| **Shubhay Yadav** (Team Lead) | **Summary Agent Engine, Concession Math & Architecture** | Post-Interaction Summary Agent (`summaryAgentService.js`), offline fallback generator (`simulationApi.js`), Universal Deadlock Resolution, JSONB schema persistence, and backend test suites. |
+| **Niharika Indurthi** | **Sentiment Journey Timeline & Interactive Trajectory Visualizer** | Round-by-round sentiment analysis tracker, interactive emotional trajectory chart in `HistoryReports.jsx`, 5-milestone human stance mapper, and collision-free tooltips. |
+| **Keerthana** | **Outcome & 4-Factor Resolution Quality Scoring Engine** | 4-Factor Resolution Quality Score ($0-100$), Goal Achievement, Agreement, Turn Efficiency, Concession Management rubric, premature concession penalty, and scorecard badges. |
+| **Tarun** | **Personalized Recommendations & Tactical Coaching Engine** | Behavioral feedback generator, Strengths, Vulnerabilities, role-tailored Actionable Takeaways, and post-session audit cards. |
+| **Saitejaswini Tammana** | **Multi-Session Analytics & Deadlock Pattern Detector** | Macro performance analytics (`NegotiationAnalytics.jsx`), Deadlock Pattern Detector (impasse clustering), 19% ZOPA Surplus Efficiency, and cross-scenario Concession Velocity curves. |
 
 ---
 
 ## Core Features
 
-### Completed Features (Milestones 1, 2 & 3 — Tasks 1 to 4)
+### Completed Features (Milestones 1, 2, 3 & 4)
 
 * **Autonomous Turn-Taking Arena:** Alternating round-based negotiation with automated agent reasoning.
 * **3 Realistic Business Scenarios:** Vendor Pricing, Job Offer Compensation, and 3-Party Project Budget Allocation.
 * **Dynamic Personality Concession Curves:** Aggressive, Collaborative, and Risk-Averse concession behaviors.
-* **ZOPA & Convergence Engine:** Mathematical threshold detection ($\text{Gap} \le 500$) for instantaneous settlement.
+* **ZOPA & Convergence Engine:** Zero-threshold mathematical convergence ($\Delta = 0$) for contract settlement.
 * **Pure Python Decision & Evaluation Engine (M3 Task 1):** Deterministic utility scoring, hard-constraint validation, and concession velocity calculations.
-* **3-Tier AI Fallback Architecture (M3 Task 2):** Primary Google Gemini, secondary OpenAI, and tertiary mathematical concession curves ensuring 100% uptime.
-* **Randomized Round Convergence (M3 Task 2):** Diverse negotiation terminations (Rounds 6–12) preventing predictable round-5 lock-in.
-* **Interactive Practice Mode (M3 Task 3):** Human-vs-AI negotiation dock allowing users to play as either party across all 3 scenarios.
+* **3-Tier AI Fallback Architecture (M3 Task 2):** Primary Google Gemini (`gemini-3.8-flash`), secondary OpenAI (`gpt-4o-mini`), and tertiary mathematical concession curves ensuring 100% uptime.
+* **Interactive Practice Mode (M3 Task 3):** Human-vs-AI negotiation dock with scenario-enforced opening moves and real-time intent classification badges (`OFFER`, `COUNTER`, `ACCEPT`, `REJECT`).
 * **Web Speech API Voice Dictation (M3 Task 3):** Hands-free speech-to-text input with live recording indicators and instant transcription.
-* **Natural Monetary & Intent Parser (M3 Task 3):** Flexible number formatting (raw, commas, `k`, Lakhs, LPA, Rupees) and tripartite budget split parsing.
-* **Universal Deadlock Resolution System (M3 Task 4):** Automated impasse detection, dynamic compromise proposals, and strict 2-attempt counter-offer management.
-* **Mathematical Crossover & Instant Agreement (M3 Task 4):** Instantaneous agreement when buyer offer $\ge$ seller ask, recruiter offer $\ge$ candidate ask, or budget $\le 10\text{L}$.
-* **Post-Negotiation History & Analytics:** Persistent Neon PostgreSQL session store with Pareto optimality, joint utility, and fairness evaluation.
-* **Interactive Reports & PDF Export:** Clean, print-optimized post-negotiation audit generation with transcripts and Markdown download.
-* **Multilingual Support (i18n):** Complete UI localization across 6 languages (**English, Hindi, Bengali, Telugu, Tamil, Marathi**).
-* **Comprehensive Test Suite:** **83 Total Automated Tests** passing across frontend (29), backend (17), and decision module (37).
+* **Universal Deadlock Resolution System (M3 Task 4):** Automated impasse detection and ZOPA midpoint compromise synthesis.
+* **Post-Interaction Summary Agent Engine (M4 Task 1):** Autonomous narrative summary generation and human bargaining trajectory analysis persisted to PostgreSQL JSONB.
+* **Sentiment Journey Timeline (M4 Task 2):** Round-by-round emotional trajectory curves ($-1.0$ to $+1.0$) and 5-stage human stance progression.
+* **4-Factor Resolution Quality Scoring (M4 Task 3):** Multi-criteria 100-point rubric evaluating Goal Achievement, Agreement, Effectiveness, and Concession Management.
+* **Personalized Tactical Coaching (M4 Task 4):** Automated behavioral feedback cards identifying Strengths, Vulnerabilities, and 3 Actionable Takeaways.
+* **Macro Negotiation Analytics & Pattern Detector (M4 Task 5):** Aggregated telemetry tracking 19% ZOPA Surplus Efficiency, Concession Velocity curves, and Deadlock impasse clustering.
+* **Comprehensive Test Suite:** Fully verified with **27 Frontend tests passing**, **13 Backend tests passing**, and 0 production build errors.
 
 ---
 
@@ -431,13 +477,13 @@ where $\alpha \approx 0.5$ balances commercial midpoint terms while adhering str
 ## About & Team
 
 * **Project Name:** Multi-Agent Autonomous Negotiation Platform (**Negotiator AI**)
-* **Milestone:** Milestone 3 (Tasks 1, 2, 3 & 4: Offer Evaluation Decision Engine, Multi-Tier AI Reasoning, Interactive Practice Mode with Voice Dictation & Universal Deadlock Resolution System)
+* **Milestone:** Milestone 4 (Post-Interaction Analysis, Performance Analytics & Final Project Delivery)
 * **Repository:** [https://github.com/shubhayyadav84/multi-agent-negotiation-simulator](https://github.com/shubhayyadav84/multi-agent-negotiation-simulator)
 * **Upstream:** [https://github.com/karthik-vana/multi-agent-negotiation-simulator](https://github.com/karthik-vana/multi-agent-negotiation-simulator)
 * **License:** [MIT License](LICENSE)
 * **Team Members:**
-  * **Shubhay Yadav**
+  * **Shubhay Yadav** (Team Lead)
   * **Niharika Indurthi**
-  * **Saitejaswini Tammana**
   * **Keerthana**
-  * **Karthik Vana**
+  * **Saitejaswini Tammana**
+  * **Tarun**

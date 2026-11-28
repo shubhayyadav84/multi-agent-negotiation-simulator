@@ -838,6 +838,21 @@ body {
 
 /* Responsive */
 @media (max-width: 860px) {
+  /* On mobile: body overflow-x:hidden creates a BFC scroll container that
+     steals window scroll. Switch to overflow-x:clip which clips visually
+     WITHOUT creating a new scroll container, so window scrolls normally. */
+  html, body {
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100% !important;
+  }
+
+  #root {
+    height: auto !important;
+    min-height: 100% !important;
+  }
+
   .sidebar {
     transform: translateX(-100%);
     width: min(320px, 86vw);
@@ -856,6 +871,9 @@ body {
   .app-container {
     width: 100% !important;
     max-width: 100% !important;
+    /* No min-height:100vh lock on mobile — let content define height */
+    min-height: 0 !important;
+    align-items: flex-start !important;
   }
 
   .main-wrapper {
@@ -863,13 +881,20 @@ body {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    flex: 1 1 100% !important;
+    flex: 1 1 auto !important;
+    /* Remove the 100vh lock so window can scroll past the fold */
+    min-height: 0 !important;
+    height: auto !important;
   }
 
   .page-container {
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+    /* flex:none stops page-container from flex-growing to fill main-wrapper */
+    flex: none !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
 
   .app-header {

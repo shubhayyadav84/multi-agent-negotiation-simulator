@@ -79,9 +79,9 @@
 }
 
 html {
-  overflow-x: clip;
   scroll-behavior: smooth;
-  height: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 body {
@@ -91,16 +91,14 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
-  height: auto;
-  overflow-x: clip;
-  overflow-y: visible;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
 #root {
   min-height: 100vh;
-  height: auto;
-  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -112,11 +110,8 @@ body {
 .app-container {
   display: flex;
   min-height: 100vh;
-  height: auto;
   width: 100%;
-  max-width: 100%;
   background-color: var(--bg-app);
-  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -608,9 +603,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  height: auto;
   box-sizing: border-box;
-  overflow: visible;
 }
 
 /* Header */
@@ -863,8 +856,6 @@ body {
   .app-container {
     width: 100% !important;
     max-width: 100% !important;
-    overflow: visible !important;
-    height: auto !important;
   }
 
   .main-wrapper {
@@ -873,8 +864,6 @@ body {
     max-width: 100% !important;
     min-width: 0 !important;
     flex: 1 1 100% !important;
-    overflow: visible !important;
-    height: auto !important;
   }
 
   .page-container {

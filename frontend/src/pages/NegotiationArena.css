@@ -5,10 +5,7 @@
 .page-container.arena-page-container {
   padding: 12px 20px 32px;
   min-height: calc(100vh - var(--header-height, 72px));
-  height: auto;
-  max-height: none;
   box-sizing: border-box;
-  overflow: visible !important;
   display: flex;
   flex-direction: column;
 }
@@ -19,13 +16,9 @@
   gap: 12px;
   width: 100%;
   max-width: 1600px;
-  min-height: 100%;
-  height: auto;
-  max-height: none;
   margin: 0 auto;
   padding: 0;
   box-sizing: border-box;
-  overflow: visible !important;
   flex: 1;
 }
 
@@ -1390,7 +1383,7 @@
   .page-container.arena-page-container,
   .arena-page-container {
     height: auto !important;
-    min-height: calc(100vh - var(--header-height, 72px)) !important;
+    min-height: auto !important;
     max-height: none !important;
     overflow: visible !important;
     padding-bottom: 120px !important;
@@ -1479,7 +1472,7 @@
   .arena-page-container {
     padding: 10px 8px 120px !important;
     height: auto !important;
-    min-height: calc(100vh - var(--header-height, 72px)) !important;
+    min-height: auto !important;
     max-height: none !important;
     overflow: visible !important;
   }
@@ -4060,7 +4053,7 @@
   .arena-page-container {
     padding: 8px 6px 120px !important;
     height: auto !important;
-    min-height: calc(100vh - var(--header-height, 72px)) !important;
+    min-height: auto !important;
     max-height: none !important;
     overflow: visible !important;
   }
@@ -4264,65 +4257,6 @@
   .arena-metrics-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 8px !important;
-  }
-}
-
-/* ==========================================================================
-   Mobile Quick Jump Controls (Instant Smooth Navigation to Stances & Metrics)
-   ========================================================================== */
-.arena-mobile-quick-jump {
-  display: none;
-  width: 100%;
-  margin: 10px 0 14px;
-}
-
-.arena-mobile-jump-back {
-  display: none;
-  width: 100%;
-  margin-top: 16px;
-  padding-bottom: 24px;
-}
-
-@media (max-width: 1024px) {
-  .arena-mobile-quick-jump {
-    display: flex;
-    justify-content: center;
-  }
-
-  .arena-mobile-jump-back {
-    display: flex;
-    justify-content: center;
-  }
-
-  .btn-mobile-jump {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    background: #eff6ff;
-    color: #1d4ed8;
-    border: 1.5px solid #93c5fd;
-    border-radius: 9999px;
-    padding: 9px 20px;
-    font-size: 0.82rem;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.14);
-    transition: all 0.2s ease;
-    width: 100%;
-    max-width: 320px;
-  }
-
-  [data-theme="dark"] .btn-mobile-jump {
-    background: #1e293b;
-    border-color: #3b82f6;
-    color: #93c5fd;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
-  }
-
-  .btn-mobile-jump:hover {
-    background: #dbeafe;
-    transform: translateY(-1px);
   }
 }
 

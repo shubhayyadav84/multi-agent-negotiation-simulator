@@ -3,11 +3,15 @@
    ========================================================================== */
 
 .page-container.arena-page-container {
-  padding: 12px 20px 16px;
-  height: calc(100vh - var(--header-height, 72px));
-  max-height: calc(100vh - var(--header-height, 72px));
+  padding: 12px 20px 24px;
+  min-height: calc(100vh - var(--header-height, 72px));
+  height: auto;
+  max-height: none;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
   display: flex;
   flex-direction: column;
 }
@@ -18,14 +22,14 @@
   gap: 12px;
   width: 100%;
   max-width: 1600px;
-  height: 100%;
-  max-height: 100%;
+  min-height: 100%;
+  height: auto;
+  max-height: none;
   margin: 0 auto;
   padding: 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible !important;
   flex: 1;
-  min-height: 0;
 }
 
 .arena-page-wrapper.fullscreen {
@@ -494,8 +498,8 @@
   align-items: stretch;
   flex: 1;
   min-height: 0;
-  height: 100%;
-  overflow: hidden;
+  height: auto;
+  overflow: visible;
 }
 
 /* Left Transcript Card */
@@ -1385,13 +1389,16 @@
    Responsive Adaptations
    ========================================================================== */
 @media (max-width: 1024px) {
-  .page-container.arena-page-container {
+  .page-container.arena-page-container,
+  .arena-page-container {
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
-    overflow-y: visible !important;
+    overflow-y: auto !important;
     overflow-x: hidden !important;
-    padding-bottom: 40px !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    padding-bottom: 48px !important;
   }
 
   .arena-page-wrapper {
@@ -1417,10 +1424,11 @@
   }
 
   .arena-transcript-body {
-    height: 420px !important;
+    height: auto !important;
     max-height: 480px !important;
     min-height: 280px !important;
     overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
   .arena-sidebar-col {
@@ -1434,8 +1442,16 @@
 }
 
 @media (max-width: 768px) {
-  .page-container.arena-page-container {
-    padding: 10px 8px 36px !important;
+  .page-container.arena-page-container,
+  .arena-page-container {
+    padding: 10px 8px 48px !important;
+    height: auto !important;
+    min-height: calc(100vh - var(--header-height, 72px)) !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
   }
 
   /* Outcome Banner on Mobile - Matches reference compact banner */
@@ -3955,11 +3971,14 @@
 @media (max-width: 480px) {
   .page-container.arena-page-container,
   .arena-page-container {
-    padding: 8px 6px 40px !important;
+    padding: 8px 6px 48px !important;
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
-    overflow-y: visible !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
   }
 
   .arena-header-banner {

@@ -315,7 +315,7 @@ const NegotiationArena = () => {
 
   // New UI state
   const [aiCoachEnabled, setAiCoachEnabled] = useState(true);
-  const [metricsExpanded, setMetricsExpanded] = useState(false);
+  const [metricsExpanded, setMetricsExpanded] = useState(true);
   const [practiceMessage, setPracticeMessage] = useState('');
   const [practiceOfferValue, setPracticeOfferValue] = useState('');
   const [showPracticeReportModal, setShowPracticeReportModal] = useState(false);

@@ -1035,6 +1035,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
+  padding-bottom: 24px;
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
 }
@@ -1392,7 +1393,7 @@
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
     overflow: visible !important;
-    padding-bottom: 48px !important;
+    padding-bottom: 120px !important;
   }
 
   .arena-page-wrapper {
@@ -1429,9 +1430,10 @@
 
   .arena-transcript-body {
     height: auto !important;
-    max-height: 480px !important;
-    min-height: 200px !important;
+    max-height: 400px !important;
+    min-height: 180px !important;
     overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
     -webkit-overflow-scrolling: touch !important;
   }
 
@@ -1456,13 +1458,15 @@
     position: static !important;
     margin-top: 14px !important;
     padding-right: 0 !important;
+    padding-bottom: 120px !important;
+    margin-bottom: 40px !important;
   }
 }
 
 @media (max-width: 768px) {
   .page-container.arena-page-container,
   .arena-page-container {
-    padding: 10px 8px 48px !important;
+    padding: 10px 8px 120px !important;
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
@@ -1692,9 +1696,10 @@
 
   .arena-transcript-body {
     height: auto !important;
-    max-height: 440px !important;
-    min-height: 180px !important;
+    max-height: 360px !important;
+    min-height: 160px !important;
     overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
     -webkit-overflow-scrolling: touch !important;
     padding: 12px 8px !important;
   }
@@ -1720,6 +1725,8 @@
     position: static !important;
     margin-top: 14px !important;
     padding-right: 0 !important;
+    padding-bottom: 120px !important;
+    margin-bottom: 40px !important;
   }
 
   /* Chat Rows & One-Box Message Bubbles on Mobile */
@@ -4029,7 +4036,7 @@
 @media (max-width: 480px) {
   .page-container.arena-page-container,
   .arena-page-container {
-    padding: 8px 6px 48px !important;
+    padding: 8px 6px 120px !important;
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
@@ -4129,9 +4136,10 @@
 
   .arena-transcript-body {
     height: auto !important;
-    max-height: 380px !important;
-    min-height: 160px !important;
+    max-height: 320px !important;
+    min-height: 150px !important;
     overflow-y: auto !important;
+    overscroll-behavior-y: contain !important;
     -webkit-overflow-scrolling: touch !important;
   }
 
@@ -4172,6 +4180,8 @@
     position: static !important;
     margin-top: 12px !important;
     padding-right: 0 !important;
+    padding-bottom: 140px !important;
+    margin-bottom: 50px !important;
   }
 
   .arena-coach-card,

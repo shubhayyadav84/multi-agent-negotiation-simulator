@@ -3,15 +3,12 @@
    ========================================================================== */
 
 .page-container.arena-page-container {
-  padding: 12px 20px 24px;
+  padding: 12px 20px 32px;
   min-height: calc(100vh - var(--header-height, 72px));
   height: auto;
   max-height: none;
   box-sizing: border-box;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
+  overflow: visible !important;
   display: flex;
   flex-direction: column;
 }
@@ -1394,10 +1391,7 @@
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
+    overflow: visible !important;
     padding-bottom: 48px !important;
   }
 
@@ -1411,24 +1405,42 @@
   .arena-main-grid {
     display: flex !important;
     flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    grid-template-columns: none !important;
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
     gap: 16px !important;
+    position: static !important;
   }
 
   .arena-transcript-card {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
+    flex: none !important;
+    position: static !important;
   }
 
   .arena-transcript-body {
     height: auto !important;
     max-height: 480px !important;
-    min-height: 280px !important;
+    min-height: 200px !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+  }
+
+  .arena-human-dock {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    position: relative !important;
+    flex: none !important;
   }
 
   .arena-sidebar-col {
@@ -1437,7 +1449,13 @@
     overflow: visible !important;
     display: flex !important;
     flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
     gap: 14px !important;
+    flex: none !important;
+    position: static !important;
+    margin-top: 14px !important;
+    padding-right: 0 !important;
   }
 }
 
@@ -1448,10 +1466,7 @@
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
+    overflow: visible !important;
   }
 
   /* Outcome Banner on Mobile - Matches reference compact banner */
@@ -1644,12 +1659,31 @@
     white-space: nowrap !important;
   }
 
-  /* Unlocked Transcript Card on Mobile */
+  /* Main Grid & Unlocked Transcript Card on Mobile */
+  .arena-main-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    grid-template-columns: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 16px !important;
+    position: static !important;
+  }
+
   .arena-transcript-card {
     border-radius: 14px !important;
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: static !important;
   }
 
   .arena-transcript-header {
@@ -1658,10 +1692,34 @@
 
   .arena-transcript-body {
     height: auto !important;
-    max-height: none !important;
+    max-height: 440px !important;
     min-height: 180px !important;
-    overflow: visible !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
     padding: 12px 8px !important;
+  }
+
+  .arena-human-dock {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    position: relative !important;
+    flex: none !important;
+  }
+
+  .arena-sidebar-col {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 14px !important;
+    flex: none !important;
+    position: static !important;
+    margin-top: 14px !important;
+    padding-right: 0 !important;
   }
 
   /* Chat Rows & One-Box Message Bubbles on Mobile */
@@ -3975,10 +4033,7 @@
     height: auto !important;
     min-height: calc(100vh - var(--header-height, 72px)) !important;
     max-height: none !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-y !important;
+    overflow: visible !important;
   }
 
   .arena-header-banner {
@@ -4045,12 +4100,47 @@
     min-width: 0 !important;
   }
 
+  .arena-main-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    grid-template-columns: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 12px !important;
+    position: static !important;
+  }
+
   .arena-transcript-card {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
     border-radius: 12px !important;
     padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: static !important;
+  }
+
+  .arena-transcript-body {
+    height: auto !important;
+    max-height: 380px !important;
+    min-height: 160px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .arena-human-dock {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    position: relative !important;
+    flex: none !important;
   }
 
   .arena-dock-detected-pill {
@@ -4067,6 +4157,31 @@
   .arena-quick-chip {
     padding: 3px 6px !important;
     font-size: 0.70rem !important;
+  }
+
+  .arena-sidebar-col {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    gap: 12px !important;
+    flex: none !important;
+    position: static !important;
+    margin-top: 12px !important;
+    padding-right: 0 !important;
+  }
+
+  .arena-coach-card,
+  .arena-number-guide-card,
+  .arena-side-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    position: static !important;
+    height: auto !important;
+    box-sizing: border-box !important;
   }
 
   .arena-metrics-grid {

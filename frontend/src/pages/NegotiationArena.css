@@ -1380,13 +1380,14 @@
    Responsive Adaptations
    ========================================================================== */
 @media (max-width: 1024px) {
+  /* PAGE & WRAPPER: allow natural height so window scrolls */
   .page-container.arena-page-container,
   .arena-page-container {
     height: auto !important;
     min-height: auto !important;
     max-height: none !important;
     overflow: visible !important;
-    padding-bottom: 120px !important;
+    padding-bottom: 80px !important;
   }
 
   .arena-page-wrapper {
@@ -1396,6 +1397,7 @@
     min-height: auto !important;
   }
 
+  /* GRID: single column flex, natural height */
   .arena-main-grid {
     display: flex !important;
     flex-direction: column !important;
@@ -1407,8 +1409,12 @@
     overflow: visible !important;
     gap: 16px !important;
     position: static !important;
+    align-items: stretch !important;
   }
 
+  /* TRANSCRIPT CARD: overflow:hidden keeps border-radius clipping intact
+     and prevents the human-dock from "floating over" the transcript body.
+     height:auto lets the card grow to fit transcript body + human dock. */
   .arena-transcript-card {
     display: flex !important;
     flex-direction: column !important;
@@ -1416,39 +1422,43 @@
     max-width: 100% !important;
     height: auto !important;
     max-height: none !important;
-    overflow: visible !important;
+    overflow: hidden !important;   /* ← MUST be hidden, not visible */
     flex: none !important;
     position: static !important;
   }
 
+  /* TRANSCRIPT BODY: capped height so it scrolls internally */
   .arena-transcript-body {
+    flex: none !important;
     height: auto !important;
-    max-height: 380px !important;
-    min-height: 160px !important;
+    max-height: 360px !important;
+    min-height: 150px !important;
     overflow-y: auto !important;
-    overscroll-behavior: auto !important;
-    overscroll-behavior-y: auto !important;
+    overscroll-behavior-y: contain !important;
     -webkit-overflow-scrolling: touch !important;
   }
 
   .arena-page-wrapper.mode-practice .arena-transcript-body {
-    max-height: 190px !important;
-    min-height: 100px !important;
+    max-height: 180px !important;
+    min-height: 90px !important;
   }
 
   .arena-page-wrapper.mode-simulation .arena-transcript-body {
-    max-height: 270px !important;
-    min-height: 140px !important;
+    max-height: 260px !important;
+    min-height: 130px !important;
   }
 
+  /* HUMAN DOCK: static flow — renders below transcript body, never overlapping */
   .arena-human-dock {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    position: relative !important;
+    position: static !important;   /* ← static, not sticky/fixed/relative */
     flex: none !important;
+    flex-shrink: 0 !important;
   }
 
+  /* SIDEBAR: natural flow, generous bottom padding so Metrics are reachable */
   .arena-sidebar-col {
     height: auto !important;
     max-height: none !important;
@@ -1462,8 +1472,8 @@
     position: static !important;
     margin-top: 14px !important;
     padding-right: 0 !important;
-    padding-bottom: 120px !important;
-    margin-bottom: 40px !important;
+    padding-bottom: 80px !important;
+    margin-bottom: 0 !important;
   }
 }
 
@@ -1685,7 +1695,7 @@
     border-radius: 14px !important;
     height: auto !important;
     max-height: none !important;
-    overflow: visible !important;
+    overflow: hidden !important;   /* keeps border-radius clip; dock flows below body */
     width: 100% !important;
     max-width: 100% !important;
     flex: none !important;
@@ -1699,32 +1709,34 @@
   }
 
   .arena-transcript-body {
+    flex: none !important;
     height: auto !important;
-    max-height: 320px !important;
-    min-height: 140px !important;
+    max-height: 300px !important;
+    min-height: 130px !important;
     overflow-y: auto !important;
-    overscroll-behavior: auto !important;
-    overscroll-behavior-y: auto !important;
+    overscroll-behavior-y: contain !important;
     -webkit-overflow-scrolling: touch !important;
     padding: 10px 8px !important;
   }
 
   .arena-page-wrapper.mode-practice .arena-transcript-body {
-    max-height: 160px !important;
-    min-height: 90px !important;
+    max-height: 155px !important;
+    min-height: 80px !important;
   }
 
   .arena-page-wrapper.mode-simulation .arena-transcript-body {
-    max-height: 250px !important;
-    min-height: 130px !important;
+    max-height: 240px !important;
+    min-height: 120px !important;
   }
 
+  /* Human dock: static flow — always below transcript body, never overlapping */
   .arena-human-dock {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    position: relative !important;
+    position: static !important;
     flex: none !important;
+    flex-shrink: 0 !important;
   }
 
   .arena-sidebar-col {
@@ -1740,8 +1752,8 @@
     position: static !important;
     margin-top: 14px !important;
     padding-right: 0 !important;
-    padding-bottom: 120px !important;
-    margin-bottom: 40px !important;
+    padding-bottom: 80px !important;
+    margin-bottom: 0 !important;
   }
 
   /* Chat Rows & One-Box Message Bubbles on Mobile */
@@ -4138,7 +4150,7 @@
   .arena-transcript-card {
     height: auto !important;
     max-height: none !important;
-    overflow: visible !important;
+    overflow: hidden !important;   /* keeps clip; dock flows below body */
     border-radius: 12px !important;
     padding: 0 !important;
     width: 100% !important;
@@ -4150,18 +4162,18 @@
   }
 
   .arena-transcript-body {
+    flex: none !important;
     height: auto !important;
-    max-height: 280px !important;
-    min-height: 120px !important;
+    max-height: 260px !important;
+    min-height: 110px !important;
     overflow-y: auto !important;
-    overscroll-behavior: auto !important;
-    overscroll-behavior-y: auto !important;
+    overscroll-behavior-y: contain !important;
     -webkit-overflow-scrolling: touch !important;
   }
 
   .arena-page-wrapper.mode-practice .arena-transcript-body {
-    max-height: 145px !important;
-    min-height: 80px !important;
+    max-height: 130px !important;
+    min-height: 70px !important;
   }
 
   .arena-page-wrapper.mode-practice .arena-human-dock {
@@ -4199,16 +4211,18 @@
   }
 
   .arena-page-wrapper.mode-simulation .arena-transcript-body {
-    max-height: 230px !important;
-    min-height: 110px !important;
+    max-height: 210px !important;
+    min-height: 100px !important;
   }
 
+  /* Human dock: static flow — always below transcript body */
   .arena-human-dock {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
-    position: relative !important;
+    position: static !important;
     flex: none !important;
+    flex-shrink: 0 !important;
   }
 
   .arena-dock-detected-pill {
@@ -4240,8 +4254,8 @@
     position: static !important;
     margin-top: 12px !important;
     padding-right: 0 !important;
-    padding-bottom: 140px !important;
-    margin-bottom: 50px !important;
+    padding-bottom: 80px !important;
+    margin-bottom: 0 !important;
   }
 
   .arena-coach-card,

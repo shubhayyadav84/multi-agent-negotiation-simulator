@@ -1389,7 +1389,7 @@ const NegotiationArena = () => {
   })();
 
   return (
-    <div className={`arena-page-wrapper ${isFullscreen ? 'fullscreen' : ''}`}>
+    <div className={`arena-page-wrapper ${isFullscreen ? 'fullscreen' : ''} ${isPracticeMode ? 'mode-practice' : 'mode-simulation'}`}>
       {/* ========================================================================
           1. Header Section
           ======================================================================== */}
@@ -2348,6 +2348,20 @@ const NegotiationArena = () => {
 
         </div>
 
+        {/* Mobile Quick Jump Bar (Visible on mobile/tablet) */}
+        <div className="arena-mobile-quick-jump">
+          <button
+            type="button"
+            className="btn-mobile-jump"
+            onClick={() => {
+              const el = document.querySelector('.arena-sidebar-col');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+          >
+            <span>👇 View Agent Stances &amp; Metrics</span>
+          </button>
+        </div>
+
         {/* RIGHT COLUMN: Agent Status & Negotiation Metrics */}
         <div className="arena-sidebar-col">
           {/* Numbers and Offer Guide Card (Practice Mode) - Positioned ABOVE Agent Status */}
@@ -2665,6 +2679,19 @@ const NegotiationArena = () => {
                 </div>
               </div>
             </div>}
+          </div>
+
+          {/* Mobile Jump Back to Top & Transcript */}
+          <div className="arena-mobile-jump-back">
+            <button
+              type="button"
+              className="btn-mobile-jump"
+              onClick={() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <span>👆 Back to Live Transcript</span>
+            </button>
           </div>
         </div>
       </div>

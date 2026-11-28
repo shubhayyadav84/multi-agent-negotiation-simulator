@@ -37,8 +37,8 @@ An AI-powered negotiation simulation and training platform designed to model, st
 - [Live Deployments](#-live-deployments)
 - [Project Tracking & QA Sheets](#-project-tracking--quality-assurance-sheets)
 - [Project Description](#project-description)
-- [Milestone Architecture & Workflow](#milestone-architecture--workflow)
-  - [4-Stage End-to-End Simulation Pipeline](#4-stage-end-to-end-simulation-pipeline)
+- [System Architecture & Workflow](#system-architecture--workflow)
+  - [Solution Architecture Diagram](#solution-architecture-diagram)
 - [Milestone Modules & Task Breakdown](#milestone-modules--task-breakdown)
   - [Milestone 1: Scenario Configuration & Agent Specification](#milestone-1-scenario-configuration--agent-specification)
     - [Task 1: Scenario Selection & Agent Configuration](#task-1-scenario-selection--agent-configuration)
@@ -82,17 +82,18 @@ The **Multi-Agent Negotiation Simulator (Negotiator AI)** provides a full-stack 
 
 ---
 
-## Milestone Architecture & Workflow
+## System Architecture & Workflow
 
-### 4-Stage End-to-End Simulation Pipeline
+### Solution Architecture Diagram
 
-```text
-[ Step 1: Scenario Selection ] ➔ [ Step 2: Agent Configuration ] ➔ [ Step 3: Negotiation Arena ] ➔ [ Step 4: Outcome Evaluation ]
-   • Vendor Pricing                 • Inspect Bio & Role              • Alternating Turn Engine        • Joint Social Welfare
-   • Job Offer                      • Set Primary Goals               • Concession Curves (β)          • Pareto Optimality
-   • Budget Allocation              • Set Boundary Constraints        • ZOPA Crossover Detection       • Fairness Index (Nash)
-   • Levers Inspection              • Assign Personalities            • Real-time Dialogue Stream      • PDF / Markdown Export
-```
+![Multi-Agent Negotiation Simulator Solution Architecture](docs/assets/solution-architecture.jpg)
+
+The platform is engineered as a decoupled, multi-tier microservice architecture:
+* **Frontend / UI Layer (React 19 + Vite):** Scenario Selection, Agent Configuration, Real-time Negotiation Arena with Web Speech API voice dictation, History & Reports, Negotiation Analytics, and Strategy Library with Gemini AI Tutor.
+* **Backend / Application Layer (Node.js + Express.js):** REST API Gateway, Firebase Authentication, Session Management, and Orchestration State Machine enforcing strict alternating turn governance, zero-threshold convergence, and automated ZOPA midpoint compromise synthesis.
+* **AI Service Layer (Python 3.12 + FastAPI):** Asynchronous microservice running **Google Gemini 3.8 Flash** (`gemini-3.8-flash`) as primary reasoning engine, automated failover to **OpenAI GPT-4o-mini** (`gpt-4o-mini`), and pure Python mathematical concession fallbacks.
+* **Data Layer (Neon PostgreSQL via Prisma ORM):** Cloud relational store managing simulations, participant personas, messages, offer trajectories, and structured `post_summary` JSONB analytical payloads.
+* **External Services:** Browser Web Speech API for native zero-latency voice dictation and Firebase Auth for secure JWT verification.
 
 ---
 
